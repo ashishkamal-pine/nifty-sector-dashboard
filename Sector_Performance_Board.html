@@ -151,25 +151,6 @@
   .const-table td.rank{color:var(--ink-muted);}
 
   /* ---------- MODAL ---------- */
-  .modal-backdrop{
-    display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);
-    align-items:center;justify-content:center;z-index:50;padding:20px;
-  }
-  .modal-backdrop.active{display:flex;}
-  .modal{
-    background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);
-    max-width:640px;width:100%;padding:24px;max-height:85vh;overflow:auto;
-  }
-  .modal h2{margin:0 0 4px;font-size:24px;text-transform:uppercase;}
-  .modal p.hint{color:var(--ink-muted);font-size:12.5px;line-height:1.5;margin:6px 0 14px;}
-  .modal label{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--gold);
-    letter-spacing:0.08em;text-transform:uppercase;margin:14px 0 6px;}
-  .modal textarea{
-    width:100%;min-height:90px;background:var(--bg-panel-2);color:var(--ink);
-    border:1px solid var(--border);border-radius:8px;padding:10px 12px;
-    font-family:'JetBrains Mono',monospace;font-size:12px;resize:vertical;
-  }
-  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
 
   @media (max-width:640px){
     .hero{grid-template-columns:1fr;}
@@ -188,13 +169,12 @@
     </div>
     <div class="header-controls">
       <div class="tf-toggle" id="tfToggle">
-        <button data-tf="realtime" class="active">Real-time</button>
-        <button data-tf="daily">Daily</button>
+        <button data-tf="daily" class="active">Daily</button>
         <button data-tf="weekly">Weekly</button>
         <button data-tf="monthly">Monthly</button>
       </div>
-      <button class="btn" id="liveSourceBtn">Live Source</button>
-      <button class="btn primary" id="loadDataBtn">Load Data</button>
+      <button class="btn" id="autoBtn">Auto-refresh: off</button>
+      <button class="btn primary" id="loadDataBtn">Refresh</button>
     </div>
   </header>
 
@@ -226,56 +206,16 @@
 
 </div>
 
-<!-- LOAD DATA MODAL -->
-<div class="modal-backdrop" id="modalBackdrop">
-  <div class="modal">
-    <h2>Load Data</h2>
-    <p class="hint">
-      Paste CSV data below (with or without a header row). This replaces the sample data shown on load.
-      Once you have a broker/data feed wired up, these are exactly the fields a script would refresh on a timer.
-    </p>
-    <label>Sector index CSV — columns: Sector, IndexSymbol, PrevD, PrevW, PrevM, LTP</label>
-    <textarea id="sectorCsv" placeholder="Bank,NIFTYBANK,52340,51820,50900,52810"></textarea>
-    <label>Constituent CSV — columns: Sector, Symbol, PrevD, PrevW, PrevM, LTP</label>
-    <textarea id="constCsv" placeholder="Bank,HDFCBANK,1648.20,1631.50,1602.00,1657.85"></textarea>
-    <div class="modal-actions">
-      <button class="btn" id="loadSampleBtn">Reload Sample Data</button>
-      <button class="btn" id="closeModalBtn">Cancel</button>
-      <button class="btn primary" id="applyCsvBtn">Apply</button>
-    </div>
-  </div>
-</div>
-
-<!-- LIVE SOURCE MODAL -->
-<div class="modal-backdrop" id="liveModalBackdrop">
-  <div class="modal">
-    <h2>Live Source</h2>
-    <p class="hint">
-      Point this at a URL that returns the same JSON shape as this app's sample data —
-      e.g. run fyers_sync.py + serve_live_data.py locally and use
-      http://localhost:8765/live_data.json. This app will poll it every 15 seconds.
-    </p>
-    <label>Live data URL</label>
-    <textarea id="liveUrlInput" style="min-height:40px;" placeholder="http://localhost:8765/live_data.json"></textarea>
-    <div class="modal-actions">
-      <button class="btn" id="stopLiveBtn">Stop Polling</button>
-      <button class="btn" id="closeLiveModalBtn">Cancel</button>
-      <button class="btn primary" id="startLiveBtn">Start Polling</button>
-    </div>
-  </div>
-</div>
-
 <script>
-const SAMPLE_DATA = {"sectors": [{"sector": "Bank", "indexSymbol": "NIFTYBANK", "prevD": 52340, "prevW": 51820, "prevM": 50900, "ltp": 52810}, {"sector": "IT", "indexSymbol": "CNXIT", "prevD": 38420, "prevW": 38900, "prevM": 39750, "ltp": 38050}, {"sector": "Auto", "indexSymbol": "CNXAUTO", "prevD": 24680, "prevW": 24310, "prevM": 23890, "ltp": 24990}, {"sector": "Pharma", "indexSymbol": "CNXPHARMA", "prevD": 21540, "prevW": 21200, "prevM": 20680, "ltp": 21790}, {"sector": "FMCG", "indexSymbol": "CNXFMCG", "prevD": 58900, "prevW": 58600, "prevM": 58100, "ltp": 58750}, {"sector": "Metal", "indexSymbol": "CNXMETAL", "prevD": 9820, "prevW": 9640, "prevM": 9410, "ltp": 9905}, {"sector": "Energy", "indexSymbol": "CNXENERGY", "prevD": 43210, "prevW": 42980, "prevM": 42500, "ltp": 43080}, {"sector": "Realty", "indexSymbol": "CNXREALTY", "prevD": 1120, "prevW": 1095, "prevM": 1060, "ltp": 1132}, {"sector": "Media", "indexSymbol": "CNXMEDIA", "prevD": 1780, "prevW": 1820, "prevM": 1890, "ltp": 1755}, {"sector": "PSU Bank", "indexSymbol": "NIFTYPSUBANK", "prevD": 7120, "prevW": 6980, "prevM": 6810, "ltp": 7195}, {"sector": "Fin Service", "indexSymbol": "CNXFINANCE", "prevD": 23980, "prevW": 23750, "prevM": 23300, "ltp": 24140}], "constituents": [{"sector": "Bank", "symbol": "HDFCBANK", "prevD": 1032.41, "prevW": 1046.9, "prevM": 1071.0, "ltp": 1042.18}, {"sector": "Bank", "symbol": "ICICIBANK", "prevD": 1284.39, "prevW": 1289.42, "prevM": 1344.98, "ltp": 1260.23}, {"sector": "Bank", "symbol": "SBIN", "prevD": 435.72, "prevW": 442.38, "prevM": 464.37, "ltp": 438.33}, {"sector": "Bank", "symbol": "KOTAKBANK", "prevD": 988.39, "prevW": 973.33, "prevM": 964.72, "ltp": 968.88}, {"sector": "Bank", "symbol": "AXISBANK", "prevD": 1475.87, "prevW": 1501.74, "prevM": 1526.12, "ltp": 1502.87}, {"sector": "Bank", "symbol": "INDUSINDBK", "prevD": 596.9, "prevW": 586.71, "prevM": 611.36, "ltp": 599.38}, {"sector": "Bank", "symbol": "BANKBARODA", "prevD": 1579.82, "prevW": 1543.31, "prevM": 1537.74, "ltp": 1572.14}, {"sector": "Bank", "symbol": "PNB", "prevD": 1135.34, "prevW": 1115.17, "prevM": 1102.11, "ltp": 1138.85}, {"sector": "Bank", "symbol": "IDFCFIRSTB", "prevD": 1133.11, "prevW": 1145.17, "prevM": 1177.2, "ltp": 1114.07}, {"sector": "Bank", "symbol": "AUBANK", "prevD": 442.13, "prevW": 439.15, "prevM": 449.12, "ltp": 439.74}, {"sector": "Bank", "symbol": "FEDERALBNK", "prevD": 679.66, "prevW": 665.13, "prevM": 681.0, "ltp": 683.68}, {"sector": "Bank", "symbol": "CANBK", "prevD": 1063.21, "prevW": 1081.41, "prevM": 1057.19, "ltp": 1058.08}, {"sector": "IT", "symbol": "TCS", "prevD": 4340.73, "prevW": 4301.03, "prevM": 4276.67, "ltp": 4400.26}, {"sector": "IT", "symbol": "INFY", "prevD": 2991.27, "prevW": 3019.13, "prevM": 3167.33, "ltp": 2963.48}, {"sector": "IT", "symbol": "HCLTECH", "prevD": 1344.84, "prevW": 1357.42, "prevM": 1308.19, "ltp": 1353.21}, {"sector": "IT", "symbol": "WIPRO", "prevD": 2028.6, "prevW": 2052.73, "prevM": 2061.21, "ltp": 2008.04}, {"sector": "IT", "symbol": "TECHM", "prevD": 2481.81, "prevW": 2433.4, "prevM": 2412.99, "ltp": 2471.82}, {"sector": "IT", "symbol": "LTIM", "prevD": 1329.68, "prevW": 1357.45, "prevM": 1356.15, "ltp": 1305.59}, {"sector": "IT", "symbol": "PERSISTENT", "prevD": 858.59, "prevW": 861.94, "prevM": 837.48, "ltp": 843.6}, {"sector": "IT", "symbol": "COFORGE", "prevD": 2087.7, "prevW": 2039.65, "prevM": 2033.73, "ltp": 2117.82}, {"sector": "IT", "symbol": "MPHASIS", "prevD": 472.5, "prevW": 471.63, "prevM": 463.21, "ltp": 468.09}, {"sector": "IT", "symbol": "LTTS", "prevD": 2592.28, "prevW": 2598.29, "prevM": 2615.35, "ltp": 2639.34}, {"sector": "Auto", "symbol": "MARUTI", "prevD": 10691.07, "prevW": 10865.65, "prevM": 10865.01, "ltp": 10867.53}, {"sector": "Auto", "symbol": "M&M", "prevD": 11090.46, "prevW": 11030.36, "prevM": 10879.19, "ltp": 10936.45}, {"sector": "Auto", "symbol": "TATAMOTORS", "prevD": 10321.62, "prevW": 10305.98, "prevM": 10026.61, "ltp": 10115.43}, {"sector": "Auto", "symbol": "BAJAJ-AUTO", "prevD": 4145.09, "prevW": 4068.05, "prevM": 3900.67, "ltp": 4200.08}, {"sector": "Auto", "symbol": "EICHERMOT", "prevD": 3966.97, "prevW": 3880.25, "prevM": 3738.92, "ltp": 3901.22}, {"sector": "Auto", "symbol": "HEROMOTOCO", "prevD": 6076.0, "prevW": 5996.3, "prevM": 5844.0, "ltp": 5985.68}, {"sector": "Auto", "symbol": "TVSMOTOR", "prevD": 6286.15, "prevW": 6171.23, "prevM": 6319.71, "ltp": 6266.82}, {"sector": "Auto", "symbol": "ASHOKLEY", "prevD": 2916.48, "prevW": 2960.72, "prevM": 2894.18, "ltp": 2894.52}, {"sector": "Auto", "symbol": "BHARATFORG", "prevD": 13254.64, "prevW": 13243.0, "prevM": 13325.48, "ltp": 13053.7}, {"sector": "Auto", "symbol": "MRF", "prevD": 2924.95, "prevW": 2964.96, "prevM": 2939.0, "ltp": 2892.21}, {"sector": "Auto", "symbol": "BOSCHLTD", "prevD": 1082.06, "prevW": 1060.57, "prevM": 1090.11, "ltp": 1097.63}, {"sector": "Auto", "symbol": "BALKRISIND", "prevD": 1007.33, "prevW": 1021.93, "prevM": 1004.95, "ltp": 992.51}, {"sector": "Pharma", "symbol": "SUNPHARMA", "prevD": 2031.86, "prevW": 2003.35, "prevM": 2008.84, "ltp": 2056.86}, {"sector": "Pharma", "symbol": "DRREDDY", "prevD": 547.79, "prevW": 549.89, "prevM": 553.71, "ltp": 547.07}, {"sector": "Pharma", "symbol": "CIPLA", "prevD": 1699.49, "prevW": 1734.32, "prevM": 1654.23, "ltp": 1692.87}, {"sector": "Pharma", "symbol": "DIVISLAB", "prevD": 903.33, "prevW": 917.54, "prevM": 941.2, "ltp": 901.47}, {"sector": "Pharma", "symbol": "LUPIN", "prevD": 980.52, "prevW": 960.2, "prevM": 984.84, "ltp": 978.29}, {"sector": "Pharma", "symbol": "AUROPHARMA", "prevD": 1822.76, "prevW": 1778.37, "prevM": 1862.05, "ltp": 1847.26}, {"sector": "Pharma", "symbol": "TORNTPHARM", "prevD": 2255.85, "prevW": 2294.13, "prevM": 2216.83, "ltp": 2254.55}, {"sector": "Pharma", "symbol": "ZYDUSLIFE", "prevD": 601.08, "prevW": 604.73, "prevM": 632.66, "ltp": 612.74}, {"sector": "Pharma", "symbol": "ALKEM", "prevD": 776.18, "prevW": 779.18, "prevM": 782.7, "ltp": 790.38}, {"sector": "Pharma", "symbol": "BIOCON", "prevD": 2123.75, "prevW": 2161.05, "prevM": 2114.86, "ltp": 2106.48}, {"sector": "Pharma", "symbol": "GLENMARK", "prevD": 2109.03, "prevW": 2083.2, "prevM": 2074.45, "ltp": 2071.68}, {"sector": "Pharma", "symbol": "LAURUSLABS", "prevD": 1354.84, "prevW": 1378.45, "prevM": 1331.49, "ltp": 1379.81}, {"sector": "FMCG", "symbol": "HINDUNILVR", "prevD": 1136.94, "prevW": 1127.06, "prevM": 1116.45, "ltp": 1124.9}, {"sector": "FMCG", "symbol": "ITC", "prevD": 1751.0, "prevW": 1742.76, "prevM": 1788.14, "ltp": 1759.36}, {"sector": "FMCG", "symbol": "NESTLEIND", "prevD": 5389.14, "prevW": 5274.5, "prevM": 5262.51, "ltp": 5325.39}, {"sector": "FMCG", "symbol": "BRITANNIA", "prevD": 8196.56, "prevW": 8126.8, "prevM": 8212.38, "ltp": 8130.99}, {"sector": "FMCG", "symbol": "TATACONSUM", "prevD": 3978.47, "prevW": 3986.79, "prevM": 4164.81, "ltp": 4057.79}, {"sector": "FMCG", "symbol": "DABUR", "prevD": 10495.56, "prevW": 10620.24, "prevM": 10933.87, "ltp": 10677.45}, {"sector": "FMCG", "symbol": "GODREJCP", "prevD": 11062.81, "prevW": 11255.42, "prevM": 11404.22, "ltp": 11210.5}, {"sector": "FMCG", "symbol": "MARICO", "prevD": 9201.34, "prevW": 9131.04, "prevM": 8706.82, "ltp": 9020.19}, {"sector": "FMCG", "symbol": "COLPAL", "prevD": 9821.12, "prevW": 9610.21, "prevM": 9455.71, "ltp": 9677.45}, {"sector": "FMCG", "symbol": "UBL", "prevD": 1470.99, "prevW": 1487.92, "prevM": 1480.04, "ltp": 1477.15}, {"sector": "FMCG", "symbol": "VBL", "prevD": 8179.23, "prevW": 8276.91, "prevM": 8167.27, "ltp": 8175.48}, {"sector": "Metal", "symbol": "TATASTEEL", "prevD": 1118.69, "prevW": 1122.98, "prevM": 1170.71, "ltp": 1108.7}, {"sector": "Metal", "symbol": "JSWSTEEL", "prevD": 99.19, "prevW": 100.39, "prevM": 99.03, "ltp": 100.15}, {"sector": "Metal", "symbol": "HINDALCO", "prevD": 644.29, "prevW": 658.27, "prevM": 692.21, "ltp": 654.16}, {"sector": "Metal", "symbol": "VEDL", "prevD": 1144.95, "prevW": 1140.25, "prevM": 1103.33, "ltp": 1128.83}, {"sector": "Metal", "symbol": "JINDALSTEL", "prevD": 234.9, "prevW": 231.47, "prevM": 222.59, "ltp": 238.29}, {"sector": "Metal", "symbol": "SAIL", "prevD": 979.22, "prevW": 999.06, "prevM": 1024.73, "ltp": 990.19}, {"sector": "Metal", "symbol": "NMDC", "prevD": 1045.64, "prevW": 1064.01, "prevM": 1051.33, "ltp": 1063.62}, {"sector": "Metal", "symbol": "HINDCOPPER", "prevD": 1208.02, "prevW": 1185.42, "prevM": 1149.69, "ltp": 1185.06}, {"sector": "Metal", "symbol": "NATIONALUM", "prevD": 928.74, "prevW": 914.91, "prevM": 877.13, "ltp": 942.26}, {"sector": "Metal", "symbol": "APLAPOLLO", "prevD": 951.86, "prevW": 970.88, "prevM": 943.76, "ltp": 966.03}, {"sector": "Energy", "symbol": "RELIANCE", "prevD": 2685.57, "prevW": 2690.91, "prevM": 2608.33, "ltp": 2664.64}, {"sector": "Energy", "symbol": "ONGC", "prevD": 2274.8, "prevW": 2310.25, "prevM": 2425.8, "ltp": 2259.17}, {"sector": "Energy", "symbol": "NTPC", "prevD": 2992.94, "prevW": 2971.91, "prevM": 3039.04, "ltp": 2980.93}, {"sector": "Energy", "symbol": "POWERGRID", "prevD": 3239.78, "prevW": 3303.31, "prevM": 3164.32, "ltp": 3300.73}, {"sector": "Energy", "symbol": "COALINDIA", "prevD": 683.62, "prevW": 697.27, "prevM": 714.02, "ltp": 681.83}, {"sector": "Energy", "symbol": "BPCL", "prevD": 2296.03, "prevW": 2294.72, "prevM": 2270.6, "ltp": 2285.48}, {"sector": "Energy", "symbol": "IOC", "prevD": 1786.66, "prevW": 1832.31, "prevM": 1794.83, "ltp": 1817.07}, {"sector": "Energy", "symbol": "GAIL", "prevD": 1907.67, "prevW": 1891.53, "prevM": 1846.84, "ltp": 1897.31}, {"sector": "Energy", "symbol": "TATAPOWER", "prevD": 318.78, "prevW": 321.77, "prevM": 327.33, "ltp": 323.21}, {"sector": "Energy", "symbol": "ADANIGREEN", "prevD": 2185.4, "prevW": 2195.45, "prevM": 2238.14, "ltp": 2176.87}, {"sector": "Realty", "symbol": "DLF", "prevD": 708.22, "prevW": 692.97, "prevM": 698.52, "ltp": 713.25}, {"sector": "Realty", "symbol": "GODREJPROP", "prevD": 1490.99, "prevW": 1487.43, "prevM": 1517.64, "ltp": 1461.2}, {"sector": "Realty", "symbol": "OBEROIRLTY", "prevD": 745.45, "prevW": 739.73, "prevM": 733.86, "ltp": 744.41}, {"sector": "Realty", "symbol": "PHOENIXLTD", "prevD": 892.5, "prevW": 874.95, "prevM": 877.31, "ltp": 903.07}, {"sector": "Realty", "symbol": "PRESTIGE", "prevD": 558.04, "prevW": 554.36, "prevM": 553.5, "ltp": 554.36}, {"sector": "Realty", "symbol": "LODHA", "prevD": 1456.28, "prevW": 1476.61, "prevM": 1451.53, "ltp": 1438.75}, {"sector": "Realty", "symbol": "BRIGADE", "prevD": 413.5, "prevW": 406.39, "prevM": 407.4, "ltp": 406.43}, {"sector": "Realty", "symbol": "SOBHA", "prevD": 901.25, "prevW": 892.49, "prevM": 920.62, "ltp": 901.05}, {"sector": "Media", "symbol": "ZEEL", "prevD": 175.31, "prevW": 173.14, "prevM": 182.14, "ltp": 177.2}, {"sector": "Media", "symbol": "SUNTV", "prevD": 97.19, "prevW": 95.01, "prevM": 98.2, "ltp": 97.26}, {"sector": "Media", "symbol": "PVRINOX", "prevD": 66.81, "prevW": 66.96, "prevM": 64.71, "ltp": 67.62}, {"sector": "Media", "symbol": "NETWORK18", "prevD": 468.88, "prevW": 458.56, "prevM": 454.23, "ltp": 476.22}, {"sector": "Media", "symbol": "TV18BRDCST", "prevD": 406.69, "prevW": 400.08, "prevM": 399.89, "ltp": 407.47}, {"sector": "Media", "symbol": "NAZARA", "prevD": 560.6, "prevW": 567.43, "prevM": 568.87, "ltp": 554.93}, {"sector": "Media", "symbol": "SAREGAMA", "prevD": 421.75, "prevW": 419.09, "prevM": 418.2, "ltp": 417.95}, {"sector": "PSU Bank", "symbol": "SBIN", "prevD": 47.16, "prevW": 47.59, "prevM": 48.7, "ltp": 47.24}, {"sector": "PSU Bank", "symbol": "BANKBARODA", "prevD": 61.75, "prevW": 61.12, "prevM": 59.96, "ltp": 60.68}, {"sector": "PSU Bank", "symbol": "PNB", "prevD": 116.82, "prevW": 118.56, "prevM": 119.57, "ltp": 116.45}, {"sector": "PSU Bank", "symbol": "CANBK", "prevD": 232.66, "prevW": 228.58, "prevM": 224.2, "ltp": 235.13}, {"sector": "PSU Bank", "symbol": "UNIONBANK", "prevD": 101.58, "prevW": 100.3, "prevM": 101.81, "ltp": 103.01}, {"sector": "PSU Bank", "symbol": "INDIANB", "prevD": 232.87, "prevW": 232.33, "prevM": 226.72, "ltp": 233.83}, {"sector": "PSU Bank", "symbol": "BANKINDIA", "prevD": 73.45, "prevW": 75.22, "prevM": 75.71, "ltp": 72.97}, {"sector": "PSU Bank", "symbol": "IOB", "prevD": 164.9, "prevW": 165.17, "prevM": 170.89, "ltp": 162.44}, {"sector": "PSU Bank", "symbol": "CENTRALBK", "prevD": 146.09, "prevW": 145.62, "prevM": 147.18, "ltp": 143.33}, {"sector": "PSU Bank", "symbol": "UCOBANK", "prevD": 150.56, "prevW": 154.02, "prevM": 154.61, "ltp": 149.83}, {"sector": "PSU Bank", "symbol": "MAHABANK", "prevD": 77.18, "prevW": 77.65, "prevM": 75.68, "ltp": 77.96}, {"sector": "Fin Service", "symbol": "HDFCBANK", "prevD": 1344.44, "prevW": 1377.54, "prevM": 1437.65, "ltp": 1346.56}, {"sector": "Fin Service", "symbol": "ICICIBANK", "prevD": 1796.96, "prevW": 1772.05, "prevM": 1745.83, "ltp": 1807.87}, {"sector": "Fin Service", "symbol": "SBIN", "prevD": 1423.62, "prevW": 1458.6, "prevM": 1503.81, "ltp": 1403.82}, {"sector": "Fin Service", "symbol": "BAJFINANCE", "prevD": 313.74, "prevW": 318.23, "prevM": 316.2, "ltp": 316.24}, {"sector": "Fin Service", "symbol": "KOTAKBANK", "prevD": 1338.71, "prevW": 1322.31, "prevM": 1308.28, "ltp": 1318.07}, {"sector": "Fin Service", "symbol": "AXISBANK", "prevD": 1528.59, "prevW": 1565.72, "prevM": 1629.59, "ltp": 1517.09}, {"sector": "Fin Service", "symbol": "BAJAJFINSV", "prevD": 1363.06, "prevW": 1348.57, "prevM": 1362.65, "ltp": 1339.95}, {"sector": "Fin Service", "symbol": "HDFCLIFE", "prevD": 1268.46, "prevW": 1251.41, "prevM": 1303.29, "ltp": 1286.23}, {"sector": "Fin Service", "symbol": "SBILIFE", "prevD": 1097.3, "prevW": 1082.01, "prevM": 1032.07, "ltp": 1090.59}, {"sector": "Fin Service", "symbol": "SHRIRAMFIN", "prevD": 795.35, "prevW": 801.71, "prevM": 801.23, "ltp": 806.47}, {"sector": "Fin Service", "symbol": "CHOLAFIN", "prevD": 1451.43, "prevW": 1441.65, "prevM": 1378.15, "ltp": 1470.51}, {"sector": "Fin Service", "symbol": "ICICIGI", "prevD": 1343.27, "prevW": 1312.72, "prevM": 1282.73, "ltp": 1330.92}, {"sector": "Fin Service", "symbol": "ICICIPRULI", "prevD": 1476.04, "prevW": 1480.81, "prevM": 1483.26, "ltp": 1489.68}, {"sector": "Fin Service", "symbol": "PFC", "prevD": 594.46, "prevW": 607.0, "prevM": 587.57, "ltp": 603.53}, {"sector": "Fin Service", "symbol": "RECLTD", "prevD": 505.9, "prevW": 508.98, "prevM": 503.43, "ltp": 496.37}, {"sector": "Fin Service", "symbol": "MUTHOOTFIN", "prevD": 1426.08, "prevW": 1405.16, "prevM": 1446.81, "ltp": 1416.98}]};
 
 let state = {
-  timeframe: 'realtime', // realtime behaves like intraday-vs-previous-close, same field as daily
-  sectors: JSON.parse(JSON.stringify(SAMPLE_DATA.sectors)),
-  constituents: JSON.parse(JSON.stringify(SAMPLE_DATA.constituents)),
+  timeframe: 'daily',
+  sectors: [],
+  constituents: [],
   selectedSector: null,
 };
 
-const fieldForTf = (tf) => tf === 'weekly' ? 'prevW' : tf === 'monthly' ? 'prevM' : 'prevD';
+const fieldForTf = (tf) => tf === 'weekly' ? 'prevW' : tf === 'monthly' ? 'prevM' : 'prevD';  // daily
 
 function pctChange(row, tf){
   const field = fieldForTf(tf);
@@ -307,11 +247,19 @@ function rankedConstituents(sectorName){
     .sort((a,b) => (b.pct ?? -999) - (a.pct ?? -999));
 }
 
-function renderStamp(){
-  const now = new Date();
-  document.getElementById('stamp').textContent =
-    'Snapshot as of ' + now.toLocaleString('en-IN', {dateStyle:'medium', timeStyle:'short'}) +
-    ' — recalculates instantly on Load Data';
+function renderStamp(data){
+  const el = document.getElementById('stamp');
+  if(data && data.generated_at){
+    const t = new Date(data.generated_at);
+    const ageSec = Math.max(0, Math.round((Date.now() - t.getTime())/1000));
+    const age = ageSec < 90 ? ageSec + 's ago'
+              : ageSec < 5400 ? Math.round(ageSec/60) + 'm ago'
+              : Math.round(ageSec/3600) + 'h ago';
+    el.textContent = 'Data generated ' + t.toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'medium'}) +
+                     '  (' + age + ')';
+  }else{
+    el.textContent = 'Loading live data...';
+  }
 }
 
 function renderHero(list, targetEl, topLabel='TOP SECTOR', bottomLabel='BOTTOM SECTOR', nameKey='sector', symKey='indexSymbol'){
@@ -337,6 +285,11 @@ function renderGrid(){
   renderHero(list, document.getElementById('heroRow'));
   const grid = document.getElementById('sectorGrid');
   grid.innerHTML = '';
+  if(list.length === 0){
+    grid.innerHTML = '<div class="stamp">No data yet. Click <b>Refresh</b> — ' +
+                     'if that fails, start the server with <b>python app.py</b>.</div>';
+    return;
+  }
   list.forEach((s, i) => {
     const dir = (s.pct ?? 0) >= 0 ? 'up' : 'down';
     const tag = i === 0 ? 'top' : i === list.length - 1 ? 'bottom' : '';
@@ -412,70 +365,8 @@ document.getElementById('tfToggle').addEventListener('click', (e) => {
 });
 document.getElementById('backBtn').addEventListener('click', closeDrilldown);
 
-// ---------- CSV loading ----------
-function parseCsvLine(line){
-  return line.split(',').map(s => s.trim());
-}
-function looksLikeHeader(cells){
-  return /sector/i.test(cells[0]) && isNaN(parseFloat(cells[2]));
-}
-
-function applyCsv(){
-  const sectorText = document.getElementById('sectorCsv').value.trim();
-  const constText = document.getElementById('constCsv').value.trim();
-
-  if(sectorText){
-    const lines = sectorText.split('\n').map(l => l.trim()).filter(Boolean);
-    let rows = lines.map(parseCsvLine);
-    if(rows.length && looksLikeHeader(rows[0])) rows = rows.slice(1);
-    state.sectors = rows.map(r => ({
-      sector: r[0], indexSymbol: r[1],
-      prevD: parseFloat(r[2]), prevW: parseFloat(r[3]), prevM: parseFloat(r[4]), ltp: parseFloat(r[5]),
-    }));
-  }
-  if(constText){
-    const lines = constText.split('\n').map(l => l.trim()).filter(Boolean);
-    let rows = lines.map(parseCsvLine);
-    if(rows.length && looksLikeHeader(rows[0])) rows = rows.slice(1);
-    state.constituents = rows.map(r => ({
-      sector: r[0], symbol: r[1],
-      prevD: parseFloat(r[2]), prevW: parseFloat(r[3]), prevM: parseFloat(r[4]), ltp: parseFloat(r[5]),
-    }));
-  }
-  closeModal();
-  closeDrilldown();
-  renderStamp();
-  renderGrid();
-}
-
-function loadSample(){
-  state.sectors = JSON.parse(JSON.stringify(SAMPLE_DATA.sectors));
-  state.constituents = JSON.parse(JSON.stringify(SAMPLE_DATA.constituents));
-  document.getElementById('sectorCsv').value = '';
-  document.getElementById('constCsv').value = '';
-  closeModal();
-  closeDrilldown();
-  renderStamp();
-  renderGrid();
-}
-
-function openModal(){ document.getElementById('modalBackdrop').classList.add('active'); }
-function closeModal(){ document.getElementById('modalBackdrop').classList.remove('active'); }
-
-document.getElementById('loadDataBtn').addEventListener('click', openModal);
-document.getElementById('closeModalBtn').addEventListener('click', closeModal);
-document.getElementById('applyCsvBtn').addEventListener('click', applyCsv);
-document.getElementById('loadSampleBtn').addEventListener('click', loadSample);
-document.getElementById('modalBackdrop').addEventListener('click', (e) => {
-  if(e.target.id === 'modalBackdrop') closeModal();
-});
-
-// ---------- live URL polling ----------
-let livePollTimer = null;
-let liveUrl = null;
-
-function openLiveModal(){ document.getElementById('liveModalBackdrop').classList.add('active'); }
-function closeLiveModal(){ document.getElementById('liveModalBackdrop').classList.remove('active'); }
+// ---------- live data ----------
+const LIVE_ENDPOINT = '/api/live_data.json';
 
 function setLiveStatus(text, ok){
   const el = document.getElementById('liveStatus');
@@ -484,53 +375,71 @@ function setLiveStatus(text, ok){
   el.style.color = ok ? 'var(--green)' : 'var(--red)';
 }
 
-async function pollLiveUrl(){
+let fetching = false;
+
+async function fetchLiveNow(){
+  if(fetching) return;            // a slow fetch must not overlap the next tick
+  fetching = true;
+  const btn = document.getElementById('loadDataBtn');
+  const label = 'Refresh';
+  btn.textContent = 'Loading...';
+  btn.disabled = true;
+  setLiveStatus('Fetching live prices...', true);
   try{
-    const res = await fetch(liveUrl, {cache: 'no-store'});
+    const res = await fetch(LIVE_ENDPOINT, {cache:'no-store'});
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if(!data.sectors || !data.constituents) throw new Error('Unexpected JSON shape');
     state.sectors = data.sectors;
     state.constituents = data.constituents;
-    renderStamp();
-    setLiveStatus('Live — polling ' + liveUrl + ' (last update ' + new Date().toLocaleTimeString('en-IN') + ')', true);
-    if(state.selectedSector) renderDrilldown();
-    else renderGrid();
+    // stay where the user is: only leave a drilldown if that sector vanished
+    if(state.selectedSector &&
+       !state.constituents.some(c => c.sector === state.selectedSector)){
+      closeDrilldown();
+    }
+    renderStamp(data);
+    setLiveStatus(
+      'Loaded ' + data.sectors.length + ' sectors / ' + data.constituents.length +
+      ' stocks from ' + (data.source || 'live source') +
+      (data.note ? '  |  ' + data.note : ''), true);
+    if(state.selectedSector) renderDrilldown(); else renderGrid();
   }catch(e){
-    setLiveStatus('Live source error: ' + e.message + ' — will retry', false);
+    setLiveStatus(
+      'Could not load live data: ' + e.message +
+      ' - is app.py running?  Start it with:  python app.py', false);
+  }finally{
+    fetching = false;
+    btn.textContent = label;
+    btn.disabled = false;
   }
 }
 
-function startLivePolling(url){
-  liveUrl = url;
-  if(livePollTimer) clearInterval(livePollTimer);
-  pollLiveUrl();
-  livePollTimer = setInterval(pollLiveUrl, 15000);
-  closeLiveModal();
+document.getElementById('loadDataBtn').addEventListener('click', fetchLiveNow);
+
+// ---------- auto-refresh ----------
+const AUTO_MS = 30000;
+let autoTimer = null;
+
+function setAuto(on){
+  const btn = document.getElementById('autoBtn');
+  if(autoTimer){ clearInterval(autoTimer); autoTimer = null; }
+  if(on){
+    autoTimer = setInterval(fetchLiveNow, AUTO_MS);
+    btn.textContent = 'Auto-refresh: on';
+    btn.classList.add('primary');
+    fetchLiveNow();
+  }else{
+    btn.textContent = 'Auto-refresh: off';
+    btn.classList.remove('primary');
+  }
 }
 
-function stopLivePolling(){
-  if(livePollTimer) clearInterval(livePollTimer);
-  livePollTimer = null;
-  liveUrl = null;
-  setLiveStatus('', false);
-  closeLiveModal();
-}
-
-document.getElementById('liveSourceBtn').addEventListener('click', openLiveModal);
-document.getElementById('closeLiveModalBtn').addEventListener('click', closeLiveModal);
-document.getElementById('startLiveBtn').addEventListener('click', () => {
-  const url = document.getElementById('liveUrlInput').value.trim();
-  if(url) startLivePolling(url);
-});
-document.getElementById('stopLiveBtn').addEventListener('click', stopLivePolling);
-document.getElementById('liveModalBackdrop').addEventListener('click', (e) => {
-  if(e.target.id === 'liveModalBackdrop') closeLiveModal();
-});
+document.getElementById('autoBtn').addEventListener('click', () => setAuto(!autoTimer));
 
 // ---------- init ----------
 renderStamp();
 renderGrid();
+fetchLiveNow();
 </script>
 </body>
 </html>

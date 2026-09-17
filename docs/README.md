@@ -1,0 +1,76 @@
+# NIFTY Sector Dashboard — Documentation
+
+A local dashboard for tracking NSE sector performance across Daily / Weekly / Monthly
+timeframes. Runs on your machine, fetches live data on demand, needs no account.
+
+## Quickstart
+
+```bash
+python app.py
+```
+
+Opens <http://localhost:8765> and **loads live NSE data automatically**. Hit
+**Refresh** for a fresh pull, or turn on **Auto-refresh** to update every 30 seconds.
+
+**Requirements:** Python 3.7+. That is the whole list — no `pip install`, no API key,
+no login, no token.
+
+## What this project is
+
+| Piece | File | Role |
+|---|---|---|
+| Web dashboard | `Sector_Performance_Board.html` | The UI. A pure view over what `app.py` serves |
+| Server + fetcher | `app.py` | Serves the page and pulls live data on request |
+| Sector universe | `universe.py` | Single source of truth: sectors, stocks, index names |
+| Excel workbook | `Sector_Performance_Tracker.xlsx` | Independent manual tracker (see below) |
+
+Data comes from two free, key-less sources, with NSE authoritative:
+
+- **Sector indices → NSE** (`/api/allIndices`) — official values, complete daily,
+  weekly and monthly for all 11 sectors
+- **Constituent membership + prices → NSE** (`marketWatchApi`) — the live index
+  constitution, with official previous close and 30-day change
+- **Weekly stock reference → Yahoo Finance** — the one figure NSE does not publish
+  for individual stocks
+
+## Document index
+
+| Doc | Covers |
+|---|---|
+| [app.md](app.md) | `app.py` — how the fetching works, endpoints, symbol handling |
+| [architecture.md](architecture.md) | End-to-end data flow and why it is shaped this way |
+| [data-model.md](data-model.md) | The universe, shared row schema, every file format |
+| [web-dashboard.md](web-dashboard.md) | The HTML: UI, state, rendering |
+| [excel-workbook.md](excel-workbook.md) | The workbook's 4 sheets and every formula |
+| [third-party.md](third-party.md) | Every external connection and dependency |
+| [operations.md](operations.md) | Running it, troubleshooting, maintenance |
+| [known-issues.md](known-issues.md) | Remaining sharp edges — **worth reading** |
+| [live-data-options.md](live-data-options.md) | The research behind the data-source choice |
+
+## The page needs the server
+
+`Sector_Performance_Board.html` no longer carries sample data or a manual-entry path —
+it is a pure view over what `app.py` serves. Opened directly from the filesystem it
+will show "No data yet" and tell you to start the server. That is deliberate: the old
+built-in sample numbers were synthetic but looked real.
+
+## A note on the Excel workbook
+
+`Sector_Performance_Tracker.xlsx` is a fully formula-driven tracker that predates the
+Python side. Nothing writes to it any more — the script that used to populate it was
+removed along with the Fyers integration. It still works perfectly as a **manual**
+tool: paste prices into the blue input columns and every calculation, rank and
+highlight updates. See [excel-workbook.md](excel-workbook.md).
+
+## History
+
+The project originally pulled from the **Fyers broker API** (`fyers_auth.py`,
+`fyers_sync.py`, `serve_live_data.py`). That approach required a daily interactive
+login, stored a plaintext access token, and — because brokers only carry live feeds for
+F&O-enabled indices — could not quote 9 of the 11 sector indices, so it approximated
+them with an equal-weighted constituent average.
+
+Those three files were removed once NSE proved to supply complete official data for all
+11 sectors with no login at all. They remain in git history at commit `37f06ed` and can
+be restored with `git checkout 37f06ed -- <file>`. The reasoning is recorded in
+[live-data-options.md](live-data-options.md).
