@@ -9,9 +9,7 @@ Every part of this project agrees on a single row shape:
 ```
 
 Percent change is always `LTP / reference_close - 1`, and the active timeframe just
-selects *which* reference close to divide by. That is the entire model. The Excel
-formulas and the JavaScript implement the same arithmetic independently, which is why
-they stay consistent without sharing code.
+selects *which* reference close to divide by. That is the entire model.
 
 ## Component map
 
@@ -35,8 +33,6 @@ they stay consistent without sharing code.
                         │ Sector_Performance_Board.html│
                         │   (browser)                  │
                         └──────────────────────────────┘
-
-        Sector_Performance_Tracker.xlsx  —  standalone, manual, not wired in
 ```
 
 ## Why `app.py` is both server and fetcher
@@ -95,13 +91,12 @@ is never silent.
   and NSE index names all live in one file.
 - **The HTML holds no data.** It is a pure view — no sample data, no manual entry — so
   it cannot disagree with `universe.py`.
-- **Fully detached:** the Excel workbook. Nothing reads or writes it.
 
 ## What changed from the original design
 
 The project began as a Fyers broker integration that polled on a timer, kept its own
-`close_history.json`, and wrote into both the workbook and a JSON file served by a
-second process. That required a daily interactive login and a stored plaintext token,
+`close_history.json`, and wrote into both an Excel workbook and a JSON file served by
+a second process. That required a daily interactive login and a stored plaintext token,
 and could not quote 9 of 11 sector indices — so it approximated them.
 
 The current design removes the broker entirely. NSE supplies official complete figures

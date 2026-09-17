@@ -72,12 +72,6 @@ ticker with Yahoo's symbol search, then map it in `SYMBOL_OVERRIDES`, or set it 
 **Watch the counts.** The `got N/108 stocks` line is the early-warning signal for symbol
 drift.
 
-## The Excel workbook
-
-`Sector_Performance_Tracker.xlsx` is no longer written to by anything. It remains a
-working **manual** tracker: paste prices into the blue input columns and all formulas,
-ranks and conditional formatting recalculate. See [excel-workbook.md](excel-workbook.md).
-
 ## Version control
 
 A `.gitignore` covers `__pycache__/` and `*.pyc`. Nothing in the current design writes

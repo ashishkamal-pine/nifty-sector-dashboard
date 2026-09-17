@@ -7,7 +7,7 @@ python app.py
 Opens <http://localhost:8765> and loads live NSE prices automatically.
 
 **Needs:** Python 3.7+. That is the entire list. No `pip install`, no API key, no
-login, no daily token, no Excel, no second terminal.
+login, no daily token, no second terminal.
 
 ---
 
@@ -142,7 +142,6 @@ polling outside market hours — worth turning off when you are not watching.
   *Auto-refresh* toggle drives that from the browser side.
 - **No writes.** Nothing touches the Excel workbook, and no `close_history.json` is
   needed — Yahoo supplies the history.
-- **No Excel output.** The workbook is a separate manual tool; nothing writes to it.
 
 ## Caveats
 

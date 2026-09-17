@@ -135,15 +135,3 @@ real dates skips weekends and market holidays automatically.
 
 > `chartPreviousClose` is deliberately **not** used for constituent `prevD`: over a
 > 3-month range Yahoo reports the close at the *start* of the range, not yesterday's.
-
-## Excel cell contract
-
-Nothing writes to the workbook any more, but the layout is unchanged and the columns
-still mean the same thing:
-
-| Sheet | Input columns | Formula columns |
-|---|---|---|
-| `Sector Summary` | C=PrevD, D=PrevW, E=PrevM, F=LTP (rows 4-14) | G=%Chg, H=Rank, I=Tag |
-| `Constituents` | C-F, same meaning (rows 2-120) | G=%Chg, H=Rank in sector, I=Key |
-
-See [excel-workbook.md](excel-workbook.md).

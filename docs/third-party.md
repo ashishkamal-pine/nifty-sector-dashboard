@@ -3,19 +3,31 @@
 Every external touchpoint. Short version: **two free key-less data sources, one CDN for
 fonts, zero Python packages beyond the standard library.**
 
-## 1. NSE — sector indices (primary)
+## 1. NSE — sector indices and constituents (primary)
 
 | Item | Detail |
 |---|---|
 | Endpoint | `https://www.nseindia.com/api/allIndices` |
 | Auth | **None** — no key, no account, no login |
 | Used by | `app.py` → `fetch_nse_sectors()` |
-| Calls per refresh | 2 (one to prime a cookie from the homepage, one for data) |
+| Calls per refresh | 13 (1 cookie prime + 1 allIndices + 11 constituent calls) |
 | Returns | 139 indices; the 11 sectoral ones are selected by name |
 
-Per index this single call supplies `last`, `previousClose`, `oneWeekAgoVal` and
+Per index `allIndices` supplies `last`, `previousClose`, `oneWeekAgoVal` and
 `oneMonthAgoVal` — official values for all three timeframes, which is why the current
 design needs no historical endpoint and no locally-accumulated price history.
+
+A second endpoint supplies constituents:
+
+| Item | Detail |
+|---|---|
+| Endpoint | `/api/NextApi/apiClient/marketWatchApi?functionName=getIndicesData&symbol=<INDEX>` |
+| Used by | `app.py` → `fetch_nse_constituents()` |
+| Returns | NSE's **live index membership** plus `lastPrice`, `previousClose`, `perChange30d` per stock |
+
+This is what makes membership authoritative rather than a hand-maintained list. Note the
+two endpoints use **different index names** — `allIndices` says "NIFTY FINANCIAL
+SERVICES", `marketWatchApi` wants "NIFTY FIN SERVICE".
 
 **Access requirements.** NSE rejects plain scripted clients. It works only with full
 browser-style headers (a real `User-Agent`, `sec-ch-ua`, `Sec-Fetch-*`) **and** a
@@ -27,18 +39,22 @@ contract, so treat it as best-effort. NSE licenses real-time redistribution thro
 authorised vendors (TrueData, Global Datafeeds); this is a personal-dashboard use, not
 a redistribution one.
 
-## 2. Yahoo Finance — constituent stocks
+## 2. Yahoo Finance — weekly stock reference only
 
 | Item | Detail |
 |---|---|
 | Endpoint | `https://query2.finance.yahoo.com/v7/finance/spark` |
 | Auth | **None** |
-| Used by | `app.py` → `fetch_bars()` |
-| Calls per refresh | 6 (108 symbols in batches of 20; 30+ per batch returns HTTP 400) |
-| Returns | Live price + ~65 daily bars per symbol, from `range=3mo&interval=1d` |
+| Used by | `app.py` → `fetch_bars()` / `weekly_refs()` |
+| Calls per refresh | 9 (171 symbols in batches of 20; 30+ per batch returns HTTP 400) |
+| Returns | ~65 daily bars per symbol, from `range=3mo&interval=1d` |
 
-Also used as the **sector fallback** via `^CNX*` index symbols when NSE is unreachable,
-and via `/v1/finance/search` when diagnosing a symbol that stopped resolving.
+Used for exactly one thing: the **weekly reference price of individual stocks**, which
+NSE does not publish. Failed batches are retried 3 times; anything still unresolved is
+counted in `weekly_missing` rather than silently falling back.
+
+Also the **sector fallback** via `^CNX*` index symbols when NSE is unreachable, and
+`/v1/finance/search` when diagnosing a symbol that stopped resolving.
 
 **Requires a browser `User-Agent`** — Yahoo returns HTTP 429 without one.
 
@@ -68,9 +84,6 @@ fully offline.
 There is no `requirements.txt` because there is nothing to install. Verified on Python
 3.12.10.
 
-*(`openpyxl` is needed only if you want to script the Excel workbook yourself — nothing
-in the project does.)*
-
 ## 5. Localhost HTTP
 
 | Item | Detail |
@@ -91,8 +104,9 @@ in the project does.)*
 
 ## Data provenance
 
-Sector figures are **official NSE index values**, free-float market-cap weighted as NSE
-computes them. Constituent figures are Yahoo's delayed prices.
+Sector figures and constituent prices are **official NSE values** — indices free-float
+market-cap weighted as NSE computes them. Only the weekly reference for individual
+stocks comes from Yahoo.
 
 In the Yahoo fallback path only, weekly/monthly sector figures become an
 *equal-weighted* constituent average, which is **not** how NSE weights an index. Those

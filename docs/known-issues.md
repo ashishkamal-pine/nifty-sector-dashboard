@@ -66,27 +66,12 @@ constituent moves, so a small-cap counts as much as Reliance. NSE indices are fr
 market-cap weighted. Flagged with `approxWM` and a `*`, so it is visible — but it is an
 approximation, not the index.
 
-### D4. Excel sample data is mostly zeros
-
-Only the Bank block (rows 2-13) has constituent prices; the other 107 rows are zeroed,
-so `F/C-1` divides by zero, `IFERROR` yields `""`, and every rank in those blocks
-computes as 1. The workbook's own `Instructions` sheet discloses this.
 
 ---
 
 ## Fragility
 
-### F1. Hardcoded ranges in the workbook
-
-- `Sector Summary` rank formulas span `$G$4:$G$14` — fixed 11 rows
-- The `Tag` formula hardcodes `H4=11` as last place
-- Each `Constituents` sector block has its own literal row range
-- `Drilldown` has exactly 16 rank rows — matching the largest sector with zero headroom
-
-Inserting a row inside a block corrupts neighbouring blocks' ranks. See
-[excel-workbook.md](excel-workbook.md).
-
-### F2. HTML injection is no longer reachable
+### F1. HTML injection is no longer reachable
 
 The dashboard still renders with unescaped template literals into `innerHTML`, but the
 arbitrary-URL input was removed, so the only source it reads is `app.py` on loopback.

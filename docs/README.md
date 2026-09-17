@@ -22,7 +22,6 @@ no login, no token.
 | Web dashboard | `Sector_Performance_Board.html` | The UI. A pure view over what `app.py` serves |
 | Server + fetcher | `app.py` | Serves the page and pulls live data on request |
 | Sector universe | `universe.py` | Single source of truth: sectors, stocks, index names |
-| Excel workbook | `Sector_Performance_Tracker.xlsx` | Independent manual tracker (see below) |
 
 Data comes from two free, key-less sources, with NSE authoritative:
 
@@ -41,7 +40,6 @@ Data comes from two free, key-less sources, with NSE authoritative:
 | [architecture.md](architecture.md) | End-to-end data flow and why it is shaped this way |
 | [data-model.md](data-model.md) | The universe, shared row schema, every file format |
 | [web-dashboard.md](web-dashboard.md) | The HTML: UI, state, rendering |
-| [excel-workbook.md](excel-workbook.md) | The workbook's 4 sheets and every formula |
 | [third-party.md](third-party.md) | Every external connection and dependency |
 | [operations.md](operations.md) | Running it, troubleshooting, maintenance |
 | [known-issues.md](known-issues.md) | Remaining sharp edges — **worth reading** |
@@ -54,14 +52,6 @@ it is a pure view over what `app.py` serves. Opened directly from the filesystem
 will show "No data yet" and tell you to start the server. That is deliberate: the old
 built-in sample numbers were synthetic but looked real.
 
-## A note on the Excel workbook
-
-`Sector_Performance_Tracker.xlsx` is a fully formula-driven tracker that predates the
-Python side. Nothing writes to it any more — the script that used to populate it was
-removed along with the Fyers integration. It still works perfectly as a **manual**
-tool: paste prices into the blue input columns and every calculation, rank and
-highlight updates. See [excel-workbook.md](excel-workbook.md).
-
 ## History
 
 The project originally pulled from the **Fyers broker API** (`fyers_auth.py`,
@@ -70,7 +60,10 @@ login, stored a plaintext access token, and — because brokers only carry live 
 F&O-enabled indices — could not quote 9 of the 11 sector indices, so it approximated
 them with an equal-weighted constituent average.
 
-Those three files were removed once NSE proved to supply complete official data for all
-11 sectors with no login at all. They remain in git history at commit `37f06ed` and can
-be restored with `git checkout 37f06ed -- <file>`. The reasoning is recorded in
+Those files were removed once NSE proved to supply complete official data for all 11
+sectors with no login at all. `Sector_Performance_Tracker.xlsx` — a formula-driven
+manual tracker that nothing read or wrote — was removed with them.
+
+Everything remains in git history at commit `37f06ed` and can be restored with
+`git checkout 37f06ed -- <file>`. The reasoning is recorded in
 [live-data-options.md](live-data-options.md).
