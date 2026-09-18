@@ -34,6 +34,7 @@ import time
 import datetime as dt
 import urllib.parse
 import urllib.request
+import concurrent.futures
 import http.cookiejar
 import http.server
 import socketserver
@@ -46,6 +47,12 @@ HTML_FILE = "Sector_Performance_Board.html"
 SPARK_URL = "https://query2.finance.yahoo.com/v7/finance/spark"
 BATCH_SIZE = 20           # symbols per request; 30+ returns HTTP 400
 RANGE = "3mo"             # enough bars to derive weekly and monthly references
+
+# Sparkline series, one per timeframe. The range/interval pairs matter: the narrower
+# sector indices have NO daily bars on Yahoo, but they do have intraday and hourly,
+# which is why monthly uses 1h rather than 1d.
+SPARK_RANGES = {"d": ("1d", "5m"), "w": ("5d", "15m"), "m": ("1mo", "1h")}
+SPARK_POINTS = 32         # downsample target; enough shape for a 100px sparkline
 TIMEOUT = 25
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")   # both APIs reject bare clients
@@ -221,6 +228,60 @@ def fetch_nse_constituents(op, index_name):
     return out
 
 
+def _spark_series(symbols, rng, iv):
+    """{symbol: [close, ...]} for one range/interval. Close-only, gaps dropped."""
+    qs = urllib.parse.urlencode({"symbols": ",".join(symbols), "range": rng, "interval": iv})
+    out = {}
+    for attempt in range(3):
+        try:
+            data = _get_json(f"{SPARK_URL}?{qs}")
+            break
+        except Exception:
+            if attempt == 2:
+                return out
+            time.sleep(1.0 * (attempt + 1))
+    for item in (data.get("spark", {}).get("result") or []):
+        try:
+            resp = item["response"][0]
+        except (KeyError, IndexError):
+            continue
+        closes = (resp.get("indicators", {}).get("quote") or [{}])[0].get("close") or []
+        vals = [float(c) for c in closes if c is not None]
+        if len(vals) >= 2:
+            out[item["symbol"]] = vals
+    return out
+
+
+def _downsample(vals, n=SPARK_POINTS):
+    """Evenly thin a series to at most n points, always keeping the last one."""
+    if len(vals) <= n:
+        return [round(v, 2) for v in vals]
+    step = (len(vals) - 1) / (n - 1)
+    return [round(vals[int(round(i * step))], 2) for i in range(n)]
+
+
+def fetch_sparks(symbols):
+    """
+    {symbol: {"d": [...], "w": [...], "m": [...]}} - one downsampled series per
+    timeframe. Batched 20 symbols per request and threaded, so all three timeframes
+    across ~180 symbols take about a second rather than thirty.
+    """
+    symbols = [s for s in symbols if s]
+    jobs = [(key, chunk) for key in SPARK_RANGES for chunk in _chunked(symbols, BATCH_SIZE)]
+    out = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        futs = {ex.submit(_spark_series, ch, *SPARK_RANGES[k]): k for k, ch in jobs}
+        for fut in concurrent.futures.as_completed(futs):
+            key = futs[fut]
+            try:
+                series = fut.result()
+            except Exception:
+                continue
+            for sym, vals in series.items():
+                out.setdefault(sym, {})[key] = _downsample(vals)
+    return out
+
+
 def references(bars):
     """
     Derive (prevD, prevW, prevM) from dated daily bars.
@@ -392,6 +453,17 @@ def build_payload():
             "prevD": round(prev_d, 2), "prevW": round(prev_w, 2),
             "prevM": round(prev_m, 2), "ltp": round(ltp, 2),
         })
+
+    # ---- sparkline series for every row, one per timeframe ----
+    want = [YAHOO_INDEX[r["sector"]] for r in sectors]
+    want += [yahoo_stock(c["symbol"]) for c in constituents]
+    sparks = fetch_sparks(sorted({w for w in want if w}))
+    for r in sectors:
+        r["spark"] = sparks.get(YAHOO_INDEX[r["sector"]], {})
+    for c in constituents:
+        c["spark"] = sparks.get(yahoo_stock(c["symbol"]) or "", {})
+    with_spark = sum(1 for x in sectors + constituents if x["spark"].get("d"))
+    print(f"  sparklines: {with_spark}/{len(sectors) + len(constituents)} rows")
 
     elapsed = (dt.datetime.now() - started).total_seconds()
     print(f"  built {len(sectors)} sectors / {len(constituents)} constituents in {elapsed:.1f}s")

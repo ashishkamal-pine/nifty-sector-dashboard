@@ -95,11 +95,13 @@ disk — this exists only in the HTTP response.
   "note": "All sector figures are official NSE index values.",
   "sectors": [
     {"sector":"Bank","indexSymbol":"NIFTY BANK","approxWM":false,
-     "prevD":56292.45,"prevW":56471.95,"prevM":57497.8,"ltp":56055.75}
+     "prevD":56292.45,"prevW":56471.95,"prevM":57497.8,"ltp":56055.75,
+     "spark":{"d":[56290.1,...],"w":[56102.4,...],"m":[57344.9,...]}}
   ],
   "constituents": [
     {"sector":"IT","symbol":"TCS",
-     "prevD":2188.8,"prevW":2204.1,"prevM":2280.0,"ltp":2190.0}
+     "prevD":2188.8,"prevW":2204.1,"prevM":2280.0,"ltp":2190.0,
+     "spark":{"d":[2187.2,...],"w":[2201.0,...],"m":[2265.5,...]}}
   ]
 }
 ```
@@ -110,6 +112,7 @@ disk — this exists only in the HTTP response.
 | `source` / `source_sectors` | Which path ran — official NSE or the Yahoo fallback |
 | `note` | Human-readable summary of the above |
 | `approxWM` | Per sector: `true` if weekly/monthly is a constituent average |
+| `spark` | `{d, w, m}` — three 32-point close series for the sparklines (Yahoo) |
 
 All floats are rounded to 2dp. The dashboard validates only that `sectors` and
 `constituents` exist.

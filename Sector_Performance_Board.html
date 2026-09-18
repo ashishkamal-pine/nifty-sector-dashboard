@@ -89,6 +89,15 @@
   .hero-card.down .hero-pct{color:var(--red);}
   .hero-sym{color:var(--ink-muted);font-family:'JetBrains Mono',monospace;font-size:12px;margin-top:2px;}
 
+  /* ---------- SPARKLINE ---------- */
+  .spark{display:block;width:100%;height:34px;margin-top:10px;overflow:visible;}
+  .spark polyline{fill:none;stroke-width:1.6px;vector-effect:non-scaling-stroke;}
+  .spark .area{stroke:none;opacity:0.13;}
+  .up .spark polyline{stroke:var(--green);} .up .spark .area{fill:var(--green);}
+  .down .spark polyline{stroke:var(--red);}  .down .spark .area{fill:var(--red);}
+  .spark .base{stroke:var(--ink-muted);stroke-width:1px;opacity:0.28;stroke-dasharray:2 3;}
+  td .spark{height:22px;width:96px;margin:0;}
+
   /* ---------- GRID ---------- */
   .section-label{
     font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.14em;
@@ -198,7 +207,7 @@
     <div class="hero" id="ddHero" style="margin-top:18px;"></div>
     <table class="const-table">
       <thead>
-        <tr><th>Rank</th><th>Symbol</th><th>LTP</th><th>% Chg</th></tr>
+        <tr><th>Rank</th><th>Symbol</th><th>LTP</th><th>Trend</th><th>% Chg</th></tr>
       </thead>
       <tbody id="ddTableBody"></tbody>
     </table>
@@ -228,6 +237,30 @@ function fmtPct(v){
   if(v === null || v === undefined || isNaN(v)) return 'n/a';
   const s = v >= 0 ? '+' : '';
   return s + v.toFixed(2) + '%';
+}
+
+// Inline sparkline: closes -> polyline, plus a dashed line at the reference price
+// so you can see at a glance which side of it the series has been sitting on.
+function sparkSvg(vals, ref){
+  if(!vals || vals.length < 2) return '';
+  const W = 100, H = 34;
+  const lo = Math.min(...vals, ref ?? Infinity);
+  const hi = Math.max(...vals, ref ?? -Infinity);
+  const span = (hi - lo) || 1;
+  const x = i => (i / (vals.length - 1) * W).toFixed(2);
+  const y = v => (H - ((v - lo) / span) * H).toFixed(2);
+  const pts = vals.map((v, i) => x(i) + ',' + y(v)).join(' ');
+  const area = `0,${H} ${pts} ${W},${H}`;
+  const base = ref ? `<polyline class="base" points="0,${y(ref)} ${W},${y(ref)}"/>` : '';
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
+         `<polyline class="area" points="${area}"/>${base}<polyline points="${pts}"/></svg>`;
+}
+
+const sparkKey = (tf) => tf === 'weekly' ? 'w' : tf === 'monthly' ? 'm' : 'd';
+
+function sparkFor(row){
+  const vals = row.spark && row.spark[sparkKey(state.timeframe)];
+  return sparkSvg(vals, row[fieldForTf(state.timeframe)]);
 }
 
 function fmtPrice(v){
@@ -275,6 +308,7 @@ function renderHero(list, targetEl, topLabel='TOP SECTOR', bottomLabel='BOTTOM S
       <div class="hero-name display">${item[nameKey]}</div>
       <div class="hero-sym">${item[symKey] ?? ''}</div>
       <div class="hero-pct">${fmtPct(item.pct)}</div>
+      ${sparkFor(item)}
     `;
     targetEl.appendChild(card);
   });
@@ -301,6 +335,7 @@ function renderGrid(){
       <div class="name display">${s.sector}</div>
       <div class="idx-sym">${s.indexSymbol}</div>
       <div class="pct">${fmtPct(s.pct)}</div>
+      ${sparkFor(s)}
       ${tag ? `<div class="tag">${tag === 'top' ? 'Best' : 'Worst'} today</div>` : ''}
     `;
     tile.addEventListener('click', () => openDrilldown(s.sector));
@@ -345,6 +380,7 @@ function renderDrilldown(){
       <td class="rank">${i+1}</td>
       <td class="sym">${c.symbol}</td>
       <td>${fmtPrice(c.ltp)}</td>
+      <td class="${dir}">${sparkFor(c)}</td>
       <td class="pct ${dir}">${fmtPct(c.pct)}</td>
     `;
     tbody.appendChild(tr);

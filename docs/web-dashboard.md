@@ -41,14 +41,15 @@ The page also fetches once on load, so it is populated without any interaction.
 
 ### Overview
 - **Hero row** — two cards: top and bottom sector for the active timeframe.
-- **Sector grid** — all 11 ranked best→worst, each showing rank, name, index name and
-  percent change. Rank 1 gets a green "Best today" tag; last gets red "Worst today".
+- **Sector grid** — all 11 ranked best→worst, each showing rank, name, index name,
+  percent change and a **sparkline**. Rank 1 gets a green "Best today" tag; last gets
+  red "Worst today".
 - Clicking any tile opens the drill-down.
 
 ### Drill-down
 - Back button, sector title, subtitle reading `<indexName> — <Timeframe> change`.
 - Hero cards for best/worst *constituent*.
-- Ranked table: Rank, Symbol, LTP, % Chg.
+- Ranked table: Rank, Symbol, LTP, **Trend** (per-stock sparkline), % Chg.
 - Top and bottom `N` rows are tinted, where `N = min(3, floor(len/2) || 1)` — so a
   7-stock sector highlights 3 at each end without overlapping.
 
@@ -84,6 +85,8 @@ Key functions:
 | `rankedSectors()` | maps in `pct`, sorts desc, nulls sink via `?? -999` |
 | `rankedConstituents(name)` | same, filtered to one sector |
 | `renderHero(...)` | Generic — reused for both sector and constituent heroes |
+| `sparkSvg(vals, ref)` | Builds the inline sparkline SVG |
+| `sparkFor(row)` | Picks the series matching the active timeframe |
 | `renderGrid()` | Overview tiles, or the "No data yet" message when empty |
 | `renderDrilldown()` | Drill-down table |
 | `renderStamp(data)` | Header line showing the data's age |
@@ -115,6 +118,33 @@ returns to the overview if the selected sector disappeared from the payload.
 
 Validation is shallow — presence of the two top-level keys. Rows with wrong field names
 pass through and surface as `n/a`.
+
+## Sparklines
+
+Every hero card, sector tile and drill-down row carries an inline SVG sparkline. They
+are drawn from `row.spark`, which holds three pre-downsampled series:
+
+| Timeframe | Series | Source range |
+|---|---|---|
+| Daily | `spark.d` | today, 5-minute bars |
+| Weekly | `spark.w` | 5 days, 15-minute bars |
+| Monthly | `spark.m` | 1 month, hourly bars |
+
+Switching timeframe swaps the series, so the shape genuinely changes rather than being
+rescaled. Each is thinned to 32 points server-side.
+
+The line is green or red to match the row's direction, over a faint filled area, with a
+**dashed horizontal line at the reference price** (`prevD`/`prevW`/`prevM`) so you can
+see which side of it the series has been trading.
+
+`sparkSvg()` scales the y-axis to include the reference line, so a flat series near its
+reference does not get amplified into fake volatility. `preserveAspectRatio="none"` plus
+`vector-effect="non-scaling-stroke"` keeps the stroke even when the SVG is stretched to
+the tile width.
+
+**Note the sparkline for a sector comes from Yahoo's index series while the percentages
+come from NSE.** The shape is right; the absolute levels can differ slightly from NSE's
+official figure.
 
 ## Freshness
 

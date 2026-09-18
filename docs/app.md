@@ -58,6 +58,8 @@ The familiar shape plus three provenance fields:
 }
 ```
 
+Each sector and constituent row also carries `spark: {d, w, m}` — see below.
+
 `generated_at` is when the **data** was fetched, not when the browser drew it — the
 header shows its age ("2s ago"), so a stale board is now visible as stale. That closes
 issue **F5**.
@@ -82,6 +84,25 @@ the UI note rather than silently passing off the daily figure as weekly.
 
 > Note the two NSE endpoints use **different index names**: `allIndices` says
 > "NIFTY FINANCIAL SERVICES", `marketWatchApi` wants "NIFTY FIN SERVICE".
+
+### Sparkline series
+
+Each row also carries `spark: {d, w, m}` — three close-price series for the three
+timeframes, from Yahoo:
+
+| Key | Range / interval | Points |
+|---|---|---|
+| `d` | `1d` / `5m` | ~76 → 32 |
+| `w` | `5d` / `15m` | ~101 → 32 |
+| `m` | `1mo` / `1h` | ~155 → 32 |
+
+Monthly uses **hourly** bars deliberately: 8 of the 11 sector indices have no daily
+bars on Yahoo at all, but every one of them has intraday and hourly. That single choice
+is what makes sparklines possible for all 11 sectors rather than 3.
+
+`fetch_sparks()` threads 8 workers over ~30 batched requests, so all three timeframes
+across ~190 symbols add about a second. Series are downsampled to 32 points before
+they leave the server, keeping the payload near 170 KB.
 
 **Sector indices come from NSE, not Yahoo.** `https://www.nseindia.com/api/allIndices`
 returns, for every index in a single call:
