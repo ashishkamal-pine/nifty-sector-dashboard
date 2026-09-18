@@ -10,19 +10,27 @@ you at `python app.py`.
 
 ## Visual design
 
-A dark "trading desk board" driven entirely by CSS custom properties on `:root`:
+**Monochrome surfaces; colour does exactly one job — direction.** Two themes, **dark
+(default)** and light, selected by `data-theme` on `<html>`, which is set in the markup
+so there is no flash of the wrong theme. The choice persists in `localStorage`. The OS
+preference is deliberately *not* consulted: dark is the default regardless.
 
-| Token | Value | Role |
+| Role | Dark (default) | Light |
 |---|---|---|
-| `--bg` / `--bg-panel` / `--bg-panel-2` | `#0B111E` / `#121A2B` / `#0E1524` | Layered dark navy |
-| `--ink` / `--ink-muted` | `#ECE9DF` / `#8791A6` | Warm off-white text |
-| `--gold` / `--gold-dim` | `#D7A947` / `#8A7238` | Accent, active states |
-| `--green` / `--green-dim` | `#2FBE6B` / `#173321` | Gains, "Best" tag |
-| `--red` / `--red-dim` | `#E5594B` / `#3A1A17` | Losses, "Worst" tag |
+| Page plane | `#0d0d0d` | `#f9f9f7` |
+| Surface | `#1a1a19` | `#fcfcfb` |
+| Primary ink | `#ffffff` | `#0b0b0b` |
+| Secondary ink | `#c3c2b7` | `#52514e` |
+| Muted | `#898781` | `#898781` |
+| Up | `#0ca30c` | `#006300` |
+| Down | `#e66767` | `#d03b3b` |
 
-**Fonts** are the one external dependency: Barlow Condensed (headings), Inter (body),
-JetBrains Mono (all numbers) from Google Fonts. Without a network the page still works
-— it falls back to system `sans-serif`/`monospace`.
+Every ink/surface pair clears WCAG AA. **Up/down fails a colour-blindness separation
+check** (green↔red ΔE 4.6 protan on light) — which is why direction is *also* carried by
+a ▲/▼ arrow and the explicit sign, never by hue alone.
+
+**Fonts are the system sans** (`system-ui`), with `tabular-nums` on every numeric
+column. There are no webfont requests, so the page is fully offline.
 
 Layout caps at 1180px. The sector grid is `repeat(auto-fill, minmax(230px, 1fr))`, so
 it reflows responsively. Tiles animate in with a `flapin` keyframe staggered 0.03s each.
@@ -32,6 +40,7 @@ it reflows responsively. Tiles animate in with a `flapin` keyframe staggered 0.0
 | Control | Does |
 |---|---|
 | **Daily / Weekly / Monthly** | Switches which reference close drives the percentages |
+| **Theme** | Toggles dark ⇄ light; remembers the choice |
 | **Auto-refresh** | Toggle; when on, fetches immediately then every 30s, and highlights gold |
 | **Refresh** | Pull fresh data now |
 

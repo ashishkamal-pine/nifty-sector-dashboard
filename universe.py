@@ -23,8 +23,9 @@ SECTORS = {
 }
 
 # Yahoo Finance symbols for the real NSE sector indices (no API key required).
-# NOTE: ^CNXFIN resolves to 'NIFTY FINSRV25 50' - the 25/50 variant, not the full
-# NIFTY Financial Services index. It is the closest freely-quotable match.
+# NOTE: Fin Service uses NIFTY_FIN_SERVICE.NS, NOT ^CNXFIN. ^CNXFIN resolves to
+# 'NIFTY FINSRV25 50' - a different, narrower index, ~8% away in level, which made
+# its sparkline and hover prices disagree with the NSE figures beside them.
 # Yahoo carries live levels for all 11, but daily *history* for only a few
 # (typically NSEBANK / CNXIT / CNXPHARMA); app.py falls back to a constituent
 # average for weekly/monthly on the rest.
@@ -39,7 +40,7 @@ YAHOO_INDEX = {
     'Realty'     : '^CNXREALTY',
     'Media'      : '^CNXMEDIA',
     'PSU Bank'   : '^CNXPSUBANK',
-    'Fin Service': '^CNXFIN',
+    'Fin Service': 'NIFTY_FIN_SERVICE.NS',
 }
 
 
