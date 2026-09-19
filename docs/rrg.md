@@ -158,6 +158,13 @@ reveals that series' tail, dims everything else, and shows a card with its RS-Ra
 RS-Momentum, quadrant and heading. The card is anchored to the dot rather than the
 cursor so it does not jitter.
 
+**Every label sits directly beside its own dot, with no connector.** Labels used to be
+nudged apart vertically and joined back to their dot with a thin leader line. That was
+wrong for this chart specifically: a short connector is indistinguishable from a short
+tail, so every dot appeared to carry a direction marker, usually pointing the wrong way,
+and a hovered tail looked like it overshot the dot to reach the label. No label is
+nudged now and no connector is drawn, so the only lines on the chart are tails.
+
 **Labels are pruned by measurement, not by guesswork.** Every label is drawn, then its
 real `getBBox()` is compared against the ones already kept; anything that would overlap
 is hidden. Points furthest from the centre get first refusal, since those are the ones
@@ -205,7 +212,8 @@ sector's own constituents are doing.
 - **Resampled closes** are a few minutes early versus the official close.
 - **Dots spread less vertically than horizontally**, because the y-axis has to be wide
   enough to contain the tails. That is the cost of never letting a tail leave the plot.
-- **Dense clusters go unlabelled** rather than overlapping. The count is shown in the
+- **Dense clusters go unlabelled** rather than overlapping, and more go unlabelled than
+  before, since a label is no longer moved away from its dot to find space. The count is shown in the
   chart header and every dot still names itself on hover.
 - **A long tail can be clipped** at the plot edge, because the axes are scaled to the
   dots. The trimmed part is always the oldest end.

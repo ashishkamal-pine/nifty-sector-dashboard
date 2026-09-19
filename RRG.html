@@ -517,18 +517,13 @@ function render(){
     const h=p.tail[p.tail.length-1];
     return {p, x:X(h.x), y:Y(h.y)};
   });
-  // Labels are placed naively here and pruned after insertion, once their real
-  // widths can be measured. Estimating width from character count was hopeless:
-  // measured per-character width ranges 5.3px to 8.1px depending on the letters.
-  const right = heads.filter(h=>h.x <= M.l+iw-96).sort((a,b)=>a.y-b.y);
-  const left  = heads.filter(h=>h.x >  M.l+iw-96).sort((a,b)=>a.y-b.y);
-  [right,left].forEach(group=>{
-    const GAP=13;
-    group.forEach(g=>{ g.ly=g.y+3.8; });
-    for(let i=1;i<group.length;i++) group[i].ly = Math.max(group[i].ly, group[i-1].ly+GAP);
-    const over = (group.length? group[group.length-1].ly : 0) - (M.t+ih-4);
-    if(over>0) group.forEach(g=>g.ly-=over);
-  });
+  // Every label sits directly beside its own dot. Labels used to be nudged apart
+  // vertically with a leader line drawn back to the dot, which was a mistake on this
+  // chart: a short connector is indistinguishable from a short tail, so every dot
+  // appeared to have a direction marker pointing the wrong way. Now nothing is nudged
+  // and no connector is drawn - a label either fits next to its dot or is dropped by
+  // the collision prune below, and the only lines on the chart are tails.
+  heads.forEach(h=>{ h.ly = h.y + 3.8; });
 
   // the hovered series is appended last so its tail sits above every other dot
   const ordered = [...heads].sort((a,b)=>(a.p.name===state.hot?1:0)-(b.p.name===state.hot?1:0));
@@ -549,11 +544,10 @@ function render(){
       ).join('');
       trail = `<g clip-path="url(#plotClip)"><polyline class="tail-line" stroke="${col}" points="${pts}"/>${dots}</g>`;
     }
-    const leader = Math.abs(ly-(hy2+3.8)) > 3
-      ? `<line x1="${hx2.toFixed(1)}" y1="${hy2.toFixed(1)}" x2="${lx.toFixed(1)}" y2="${(ly-3.5).toFixed(1)}" stroke="${col}" stroke-width="0.8" opacity=".35"/>` : '';
+
     parts.push(
       `<g class="${cls}" data-name="${p.name}">
-         ${trail}${leader}
+         ${trail}
          <circle class="head" cx="${hx2.toFixed(1)}" cy="${hy2.toFixed(1)}" r="${isHot?6:5}" fill="${col}"/>
          <text class="head-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}">${p.name}</text>
          <circle cx="${hx2.toFixed(1)}" cy="${hy2.toFixed(1)}" r="16" fill="transparent"/>
