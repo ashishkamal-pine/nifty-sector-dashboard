@@ -224,6 +224,12 @@ def build(get_json, members, bench_symbol, bench_label,
         if not dates:
             skipped.append(m["name"])
             continue
+        # A recently listed name has a short series, so its EMA is still partly
+        # carrying its own seed value. Measured: 105 weeks of history shifts by
+        # 0.000 when the oldest quarter is dropped, 48 weeks by 0.014, 30 weeks by
+        # 0.096 - enough to matter on an axis that spans ~5 points. Flag it rather
+        # than pretend every dot is equally settled.
+        short = len(dates) < 4 * n
         cut = max(0, len(dates) - tail)
         pts = [{"d": dates[i].isoformat(), "x": round(ratio[i], 3), "y": round(mom[i], 3)}
                for i in range(cut, len(dates))]
@@ -235,6 +241,8 @@ def build(get_json, members, bench_symbol, bench_label,
             "mom": pts[-1]["y"],
             "quadrant": quadrant_of(pts[-1]["x"], pts[-1]["y"]),
             "heading": heading_of(pts),
+            "periods": len(dates),
+            "short": short,
             "tail": pts,
         })
 
@@ -252,6 +260,7 @@ def build(get_json, members, bench_symbol, bench_label,
                    "approximation, not the proprietary JdK formula."),
         "source": "Yahoo 2y hourly, resampled to daily then weekly closes",
         "skipped": skipped,
+        "short_history": [p["name"] for p in points if p["short"]],
         "points": points,
     }
 

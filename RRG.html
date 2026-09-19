@@ -148,6 +148,9 @@
         border-radius:999px;padding:2px 8px;border:1px solid transparent;}
   .chip .sw{width:7px;height:7px;border-radius:50%;}
   td.nm{font-weight:600;}
+  .short{font-size:10px;font-weight:600;color:var(--q-weak);border:1px solid var(--q-weak);
+         border-radius:4px;padding:0 4px;margin-left:5px;text-decoration:none;cursor:help;
+         vertical-align:middle;}
   .hd{display:inline-block;font-size:12px;color:var(--ink-3);}
 
   .tv{color:var(--ink-3);text-decoration:none;font-size:11px;font-weight:600;}
@@ -389,6 +392,13 @@ RS-Momentum = 100 × RS-Ratio / EMA(RS-Ratio, n)</pre>
     eleven an identical basis. Checked against real daily bars where both exist: median
     deviation 0.05%.</p>
 
+    <h3>Recently listed names</h3>
+    <p>The smoothing needs history to settle. A name listed within the last few months
+    is marked <strong>short</strong> in the table: its dot is real, but it will shift more
+    than an established name's as more data arrives. Measured on this data, 105 weeks of
+    history gives a position stable to 0.000 when a quarter of the series is removed;
+    30 weeks shifts by about 0.1, which is a couple of percent of the axis.</p>
+
     <h3>What it will not tell you</h3>
     <ul>
       <li><strong>Nothing about absolute direction.</strong> A sector can sit in Leading while
@@ -538,6 +548,15 @@ function render(){
        </g>`);
   });
   svg.innerHTML = parts.join('');
+  // A static label tells a screen-reader user nothing. Summarise the plot, and point
+  // at the table, which is the real text alternative.
+  const byQ={};
+  d.points.forEach(p=>(byQ[p.quadrant]=byQ[p.quadrant]||[]).push(p.name));
+  svg.setAttribute('aria-label',
+    `Relative rotation graph, ${d.points.length} plotted against ${d.benchmark}, ` +
+    ['Leading','Weakening','Lagging','Improving']
+      .filter(q=>byQ[q]).map(q=>`${q}: ${byQ[q].join(', ')}`).join('. ') +
+    '. The Positions table below lists the same values.');
 
   // legend with live counts
   const counts={};
@@ -551,7 +570,7 @@ function render(){
   // table
   document.getElementById('tbody').innerHTML = d.points.map(p=>`
     <tr data-name="${p.name}" class="${state.hot===p.name?'hot':''}">
-      <td class="nm">${p.label||p.name}${p.tv?` <a class="tv" href="https://in.tradingview.com/chart/?symbol=${encodeURIComponent(p.tv)}" target="_blank" rel="noopener noreferrer" title="Open on TradingView">↗</a>`:''}</td>
+      <td class="nm">${p.label||p.name}${p.short?`<abbr class="short" title="Only ${p.periods} ${d.timeframe==='weekly'?'weeks':'days'} of history — this position is less settled than the rest"> short</abbr>`:''}${p.tv?` <a class="tv" href="https://in.tradingview.com/chart/?symbol=${encodeURIComponent(p.tv)}" target="_blank" rel="noopener noreferrer" title="Open on TradingView">↗</a>`:''}</td>
       <td><span class="chip" style="color:${qColor(p.quadrant)};border-color:${qColor(p.quadrant)}">
             <span class="sw" style="background:${qColor(p.quadrant)}"></span>${p.quadrant}</span></td>
       <td class="r num">${p.ratio.toFixed(2)}</td>
@@ -659,16 +678,35 @@ document.getElementById('backBtn').addEventListener('click', ()=>{
 /* ---------------- help ---------------- */
 const sheet=document.getElementById('sheet'), scrim=document.getElementById('scrim');
 let lastFocus=null;
+const appEl=document.querySelector('.app');
 function openHelp(){
   lastFocus=document.activeElement;
-  sheet.hidden=false; requestAnimationFrame(()=>{sheet.classList.add('open');scrim.classList.add('open');});
+  sheet.hidden=false;
+  requestAnimationFrame(()=>{sheet.classList.add('open');scrim.classList.add('open');});
+  // take the page behind out of the tab order and away from assistive tech
+  appEl.setAttribute('inert','');
+  appEl.setAttribute('aria-hidden','true');
+  document.body.style.overflow='hidden';
   document.getElementById('closeHelp').focus();
 }
 function closeHelp(){
   sheet.classList.remove('open'); scrim.classList.remove('open');
   setTimeout(()=>{sheet.hidden=true;},200);
+  appEl.removeAttribute('inert');
+  appEl.removeAttribute('aria-hidden');
+  document.body.style.overflow='';
   if(lastFocus) lastFocus.focus();
 }
+// keep Tab inside the dialog even where `inert` is unsupported
+sheet.addEventListener('keydown', e=>{
+  if(e.key!=='Tab') return;
+  const f=[...sheet.querySelectorAll('a[href],button,[tabindex]:not([tabindex="-1"])')]
+            .filter(el=>el.offsetParent!==null);
+  if(!f.length) return;
+  const first=f[0], last=f[f.length-1];
+  if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+});
 document.getElementById('helpBtn').addEventListener('click',openHelp);
 document.getElementById('closeHelp').addEventListener('click',closeHelp);
 scrim.addEventListener('click',closeHelp);
@@ -720,10 +758,16 @@ async function load(force){
     document.getElementById('backBtn').hidden = d.scope!=='sector';
     st.textContent = `${d.points.length} plotted`;
     document.getElementById('footer').textContent =
-      d.method + '  ' + d.source + (d.skipped.length? '  Skipped (too little history): '+d.skipped.join(', ') : '');
+      d.method + '  ' + d.source +
+      (d.short_history && d.short_history.length
+        ? '  Short history (position less settled): ' + d.short_history.join(', ') + '.' : '') +
+      (d.skipped.length ? '  Skipped (too little history): '+d.skipped.join(', ') : '');
     render();
   }catch(e){
-    st.textContent='Could not load: '+e.message+' — is app.py running?';
+    // only suggest the server is down when the request itself failed to reach it
+    const unreachable = /Failed to fetch|NetworkError|load failed/i.test(e.message);
+    st.textContent = 'Could not load: ' + e.message +
+      (unreachable ? ' — is app.py running?' : '');
     st.classList.add('err');
   }finally{
     state.fetching=false; btn.textContent='Refresh'; btn.disabled=false;

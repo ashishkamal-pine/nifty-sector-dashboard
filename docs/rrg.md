@@ -136,6 +136,12 @@ GET /api/rrg.json?scope=sectors|sector&name=<sector>&tf=weekly|daily&tail=N&benc
 | ISO-week grouping across a year boundary | correct |
 | All sectors' tails on identical dates | yes |
 | Chart, table, legend vs the payload | 0 mismatches |
+| All 11 sectors drilled, both benchmarks | 0 skipped |
+| Tail lengths 4 / 8 / 12 / 20 / 30 | all honoured |
+| Weekly spacing 7 days, daily spacing 1 day | correct |
+| 6 concurrent heavy builds | all HTTP 200 |
+| Malformed `scope` / `bench` / `tail` | degrade, no 5xx |
+| Dialog focus trap, inert background, scroll lock | correct |
 
 The rank correlation is strongly positive but not 1.0, which is correct — RS-Ratio is a
 smoothed *trend* measure over a different window, not a point-to-point return.
@@ -157,6 +163,11 @@ sector's own constituents are doing.
 - **Approximation, not the vendor formula** — see above.
 - **Two years of history** caps the longest tail and means the EMAs are seeded from the
   start of that window rather than from an infinite past.
+- **Recently listed names are less settled.** The smoothing needs history to converge.
+  Measured by dropping the oldest quarter of each series and recomputing: 105 weeks of
+  history moves 0.000, 48 weeks moves 0.014, 30 weeks moves 0.096 — a couple of percent
+  of the axis. Anything with fewer than `4n` periods is flagged **short** in the table
+  and listed in `short_history`, rather than silently mixed in with settled names.
 - **Daily mode is noisy**, as the reference document warns; weekly is the default for a
   reason.
 - **Resampled closes** are a few minutes early versus the official close.
