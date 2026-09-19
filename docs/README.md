@@ -44,6 +44,7 @@ Data comes from two free, key-less sources, with NSE authoritative:
 | Doc | Covers |
 |---|---|
 | [app.md](app.md) | `app.py` — how the fetching works, endpoints, symbol handling |
+| [performance.md](performance.md) | How loading, caching and prefetching work, with measurements |
 | [rrg.md](rrg.md) | The Relative Rotation Graph: the maths, the data, how to read it |
 | [architecture.md](architecture.md) | End-to-end data flow and why it is shaped this way |
 | [data-model.md](data-model.md) | The universe, shared row schema, every file format |

@@ -819,7 +819,8 @@ async function load(force){
     }
     pw.hidden = !partial;
     document.getElementById('backBtn').hidden = d.scope!=='sector';
-    st.textContent = `${d.points.length} plotted`;
+    st.textContent = `${d.points.length} plotted` +
+      (d.cache && d.cache.state==='stale' ? ' · refreshing…' : '');
     document.getElementById('footer').textContent =
       d.method + '  ' + d.source +
       (d.short_history && d.short_history.length
@@ -835,7 +836,35 @@ async function load(force){
   }finally{
     state.fetching=false; btn.textContent='Refresh'; btn.disabled=false;
   }
+  if(!force) prefetchNeighbours();
 }
+
+/* Warm what the user is most likely to ask for next, once the page is idle:
+   the performance board they can reach from the tabs, the other timeframe, and
+   the sector they are already looking at. All are cached server-side, so this
+   only costs the first visitor. */
+let prefetched=false;
+function prefetchNeighbours(){
+  if(prefetched) return;
+  prefetched=true;
+  const urls=[
+    '/api/sectors.json',
+    `/api/rrg.json?scope=sectors&tf=${state.tf==='weekly'?'daily':'weekly'}&tail=${state.tail}&bench=nifty`,
+  ];
+  if(state.scope==='sector' && state.sector){
+    urls.push(`/api/rrg.json?scope=sector&name=${encodeURIComponent(state.sector)}` +
+              `&tf=${state.tf}&tail=${state.tail}&bench=${state.bench==='nifty'?'sector':'nifty'}`);
+  }
+  const go=()=>urls.forEach(u=>fetch(u,{cache:'no-store'}).catch(()=>{}));
+  ('requestIdleCallback' in window) ? requestIdleCallback(go,{timeout:4000}) : setTimeout(go,2500);
+}
+
+// each change of scope/timeframe opens a new set of likely neighbours
+['scopeSel','tailSel'].forEach(id=>document.getElementById(id)
+  .addEventListener('change',()=>{prefetched=false;}));
+document.getElementById('tfSeg').addEventListener('click',()=>{prefetched=false;});
+document.getElementById('benchSeg').addEventListener('click',()=>{prefetched=false;});
+
 load();
 </script>
 </body>

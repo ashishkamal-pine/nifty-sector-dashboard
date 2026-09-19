@@ -40,6 +40,7 @@ import http.server
 import socketserver
 import webbrowser
 import rrg
+from store import Store
 from universe import (SECTORS, YAHOO_INDEX, NSE_INDEX, NSE_CONSTITUENT_INDEX,
                       TRADINGVIEW_INDEX, ALL_STOCKS, yahoo_stock, tradingview_symbol)
 
@@ -47,6 +48,8 @@ PORT = 8765
 HTML_FILE = "Sector_Performance_Board.html"
 RRG_FILE = "RRG.html"
 BENCHMARK = ("^NSEI", "NIFTY 50")     # RRG benchmark
+
+STORE = Store(workers=4)
 SPARK_URL = "https://query2.finance.yahoo.com/v7/finance/spark"
 BATCH_SIZE = 20           # symbols per request; 30+ returns HTTP 400
 RANGE = "3mo"             # enough bars to derive weekly and monthly references
@@ -338,6 +341,130 @@ def weekly_refs(symbols):
     return out
 
 
+# ---------------------------------------------------------------------------
+# Split builders
+#
+# Profiled on live data, the old single payload spent its time like this:
+#     NSE cookie + allIndices   0.16s   <- all the sector grid needs
+#     NSE constituents          2.15s   <- only the drilldown needs it
+#     Yahoo weekly + sparks     2.56s   <- only the sparklines need it
+# and shipped 171 KB when the grid itself is 2 KB. So the page waited five
+# seconds for data it was not about to show. These build separately and the
+# browser asks for them in the order it can use them.
+# ---------------------------------------------------------------------------
+def build_sectors():
+    """The 11 official sector rows. ~0.2s, ~2 KB - this is what paints the grid."""
+    started = dt.datetime.now()
+    try:
+        nse = fetch_nse_sectors(_nse_opener())
+    except Exception as e:
+        print(f"  ! NSE indices unreachable ({str(e)[:50]})")
+        nse = {}
+    sectors = []
+    for sector in SECTORS:
+        n = nse.get(sector)
+        if not n:
+            continue
+        sectors.append({
+            "sector": sector, "indexSymbol": n["indexName"], "approxWM": False,
+            "prevD": round(n["prevD"], 2), "prevW": round(n["prevW"], 2),
+            "prevM": round(n["prevM"], 2), "ltp": round(n["ltp"], 2),
+            "tv": TRADINGVIEW_INDEX.get(sector),
+        })
+    print(f"[{started:%H:%M:%S}] sectors: {len(sectors)}/{len(SECTORS)} "
+          f"in {(dt.datetime.now()-started).total_seconds():.1f}s")
+    return {
+        "generated_at": started.isoformat(timespec="seconds"),
+        "source": "NSE (official indices)" if nse else "NSE unreachable",
+        "note": ("All sector figures are official NSE index values." if nse
+                 else "NSE unreachable - sector data unavailable."),
+        "sectors": sectors,
+    }
+
+
+def build_constituents():
+    """Live NSE membership + prices, with Yahoo supplying the weekly reference."""
+    started = dt.datetime.now()
+    by_sector, weekly_missing = {}, 0
+    try:
+        op = _nse_opener()
+        for sector, name in NSE_CONSTITUENT_INDEX.items():
+            try:
+                rows = fetch_nse_constituents(op, name)
+                if rows:
+                    by_sector[sector] = rows
+            except Exception as e:
+                print(f"  ! constituents failed for {sector} ({str(e)[:40]})")
+    except Exception as e:
+        print(f"  ! NSE unreachable for constituents ({str(e)[:50]})")
+
+    constituents = []
+    if by_sector:
+        symbols = sorted({r["symbol"] for rows in by_sector.values() for r in rows})
+        wk = weekly_refs(symbols)
+        weekly_missing = len([x for x in symbols if x not in wk])
+        for sector, rows in by_sector.items():
+            for r in rows:
+                constituents.append({
+                    "sector": sector, "symbol": r["symbol"],
+                    "prevD": round(r["prevD"], 2),
+                    "prevW": round(wk.get(r["symbol"]) or r["prevD"], 2),
+                    "prevM": round(r["prevM"], 2), "ltp": round(r["ltp"], 2),
+                    "tv": tradingview_symbol(r["symbol"]),
+                })
+    print(f"[{started:%H:%M:%S}] constituents: {len(constituents)} rows "
+          f"in {(dt.datetime.now()-started).total_seconds():.1f}s")
+    return {
+        "generated_at": started.isoformat(timespec="seconds"),
+        "weekly_missing": weekly_missing,
+        "constituents": constituents,
+    }
+
+
+def build_sparks(symbols=None):
+    """Sparkline series keyed by sector name and by stock symbol."""
+    started = dt.datetime.now()
+    if symbols is None:
+        cons = STORE.peek("constituents")[0] or {}
+        symbols = sorted({c["symbol"] for c in cons.get("constituents", [])}) or list(ALL_STOCKS)
+    want = {YAHOO_INDEX[s]: ("sector", s) for s in SECTORS}
+    for sym in symbols:
+        y = yahoo_stock(sym)
+        if y:
+            want[y] = ("stock", sym)
+    series = fetch_sparks(list(want))
+    out = {"sectors": {}, "constituents": {}}
+    for ysym, (kind, name) in want.items():
+        sp = series.get(ysym)
+        if sp:
+            out["sectors" if kind == "sector" else "constituents"][name] = sp
+    print(f"[{started:%H:%M:%S}] sparklines: {len(out['sectors'])} sectors + "
+          f"{len(out['constituents'])} stocks in "
+          f"{(dt.datetime.now()-started).total_seconds():.1f}s")
+    out["generated_at"] = started.isoformat(timespec="seconds")
+    return out
+
+
+def build_combined():
+    """The original single payload, assembled from the parts (kept for /live_data.json)."""
+    sec = STORE.get("sectors", build_sectors)[0]
+    con = STORE.get("constituents", build_constituents)[0]
+    spk = STORE.get("sparks", build_sparks)[0]
+    sectors = [dict(s, spark=spk["sectors"].get(s["sector"], {})) for s in sec["sectors"]]
+    constituents = [dict(c, spark=spk["constituents"].get(c["symbol"], {}))
+                    for c in con["constituents"]]
+    return {
+        "generated_at": sec["generated_at"],
+        "source": sec["source"] + " + Yahoo (weekly refs)",
+        "source_sectors": "NSE allIndices (official)",
+        "source_constituents": "NSE live membership",
+        "note": sec["note"],
+        "weekly_missing": con["weekly_missing"],
+        "sectors": sectors,
+        "constituents": constituents,
+    }
+
+
 def build_payload():
     """
     Sectors and constituents both come from NSE, which is authoritative for index
@@ -558,14 +685,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             one = lambda k, d=None: (q.get(k) or [d])[0]
             key = (one("scope", "sectors"), one("name"), one("tf", "weekly"),
                    one("tail", str(rrg.DEFAULT_TAIL)), one("bench", "nifty"))
-            fresh = one("force") in ("1", "true", "yes")
+            force = one("force") in ("1", "true", "yes")
             try:
                 make = lambda: build_rrg(scope=key[0], name=key[1], timeframe=key[2],
                                          tail=key[3], bench=key[4])
-                payload = make() if fresh else rrg.cached_build(key, make)
-                if fresh:
-                    rrg.put_cache(key, payload)     # keep the warm copy in step
-                body = json.dumps(payload).encode()
+                payload, age, state = STORE.get(("rrg",) + key, make, fresh=120, force=force)
+                body = json.dumps(dict(payload, cache={"state": state,
+                                                       "age": round(age, 1)})).encode()
             except Exception as e:
                 print("  ! RRG failed:", e)
                 return self._send_json({"error": str(e)}, code=502)
@@ -577,9 +703,32 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        # --- split, individually cached endpoints -------------------------
+        # Freshness windows differ by how fast the underlying data moves and how
+        # expensive it is: sector levels are cheap and move constantly, sparkline
+        # series are expensive and barely change within a minute.
+        PARTS = {
+            "/api/sectors.json":      ("sectors",      build_sectors,      30),
+            "/api/constituents.json": ("constituents", build_constituents, 45),
+            "/api/sparks.json":       ("sparks",       build_sparks,       90),
+        }
+        if path in PARTS:
+            key, builder, fresh = PARTS[path]
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            force = (q.get("force") or [""])[0] in ("1", "true", "yes")
+            try:
+                value, age, state = STORE.get(key, builder, fresh=fresh, force=force)
+            except Exception as e:
+                print(f"  ! {key} failed: {e}")
+                return self._send_json({"error": str(e)}, code=502)
+            return self._send_json(dict(value, cache={"state": state, "age": round(age, 1)}))
+
+        if path == "/api/cache.json":                  # what is warm right now
+            return self._send_json({"entries": STORE.stats()})
+
         if path in ("/api/live_data.json", "/live_data.json"):
             try:
-                body = json.dumps(build_payload()).encode()
+                body = json.dumps(build_combined()).encode()
             except Exception as e:
                 print("  ! fetch failed:", e)
                 return self._send_json({"error": str(e)}, code=502)
@@ -628,6 +777,15 @@ class Server(socketserver.ThreadingTCPServer):
 if __name__ == "__main__":
     url = f"http://localhost:{PORT}/"
     # 127.0.0.1, not "" — do not expose this on the local network.
+    # Build in the order the pages consume it, so the grid is ready first.
+    STORE.warm([
+        ("sectors",      build_sectors),
+        ("constituents", build_constituents),
+        ("sparks",       build_sparks),
+        (("rrg", "sectors", None, "weekly", "12", "nifty"),
+         lambda: build_rrg(scope="sectors", timeframe="weekly", tail="12")),
+    ], label="warm")
+
     with Server(("127.0.0.1", PORT), Handler) as httpd:
         print(f"Dashboard running at {url}")
         print('Click "Load Data" in the page to pull fresh prices. Ctrl+C to stop.\n')

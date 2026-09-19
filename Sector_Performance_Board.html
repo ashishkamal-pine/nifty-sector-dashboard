@@ -318,6 +318,7 @@
     <span id="stamp">Loading live data…</span>
     <span class="sep" id="metaSep" hidden>·</span>
     <span id="liveStatus"></span>
+    <span id="loadHint" hidden style="opacity:.75"></span>
   </div>
 
   <!-- OVERVIEW -->
@@ -559,6 +560,9 @@ function renderDrilldown(){
 }
 
 function openDrilldown(name){
+  if(!state.constituents.length && stage.constituents==='loading'){
+    setLiveStatus('Loading constituents…', true);
+  }
   state.selectedSector = name;
   document.getElementById('overviewView').style.display = 'none';
   document.getElementById('drilldownView').classList.add('active');
@@ -602,46 +606,114 @@ function setLiveStatus(text, ok){
   document.getElementById('metaSep').hidden = !text;
 }
 
-/* ---------------- data ---------------- */
-const LIVE_ENDPOINT = '/api/live_data.json';
-let fetching = false;
+/* ---------------- data ----------------
+   Loaded in three stages, in the order the page can use them. Profiled on live
+   data the grid needs 0.2s of work and 2KB; the drilldown rows need another
+   2.2s, and the sparklines 2.6s and 146KB. Waiting for all of it before drawing
+   anything meant a five-second stare at a skeleton for data that was not on
+   screen yet.
 
-async function fetchLiveNow(){
+     1. sectors       -> the grid paints
+     2. constituents  -> drilldown becomes available
+     3. sparks        -> sparklines fill in
+
+   Each stage renders as it lands, so the page is useful long before it is
+   complete. A stage failing leaves the ones before it intact.
+------------------------------------------- */
+let fetching = false;
+const stage = {sectors:'idle', constituents:'idle', sparks:'idle'};
+
+function setStageNote(){
+  const pending = Object.entries(stage)
+    .filter(([,v])=>v==='loading')
+    .map(([k])=>k==='constituents'?'stocks':k);
+  const el = document.getElementById('loadHint');
+  if(!el) return;
+  el.textContent = pending.length ? 'loading ' + pending.join(' + ') + '…' : '';
+  el.hidden = !pending.length;
+}
+
+async function getJSON(url, force){
+  const u = url + (force ? (url.includes('?')?'&':'?') + 'force=1' : '');
+  const r = await fetch(u, {cache:'no-store'});
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  const d = await r.json();
+  if(d.error) throw new Error(d.error);
+  return d;
+}
+
+function mergeSparks(sp){
+  state.sectors = state.sectors.map(s=>({...s, spark: sp.sectors[s.sector] || s.spark}));
+  state.constituents = state.constituents.map(c=>({...c, spark: sp.constituents[c.symbol] || c.spark}));
+}
+
+async function loadLive(force){
   if(fetching) return;
   fetching = true;
-  const btn = document.getElementById('refreshBtn');
-  btn.textContent = 'Loading…';
-  btn.disabled = true;
+  const btn=document.getElementById('refreshBtn');
+  btn.textContent='Loading…'; btn.disabled=true;
   if(!state.sectors.length){
     document.getElementById('sectorGrid').innerHTML =
-      Array.from({length:6}, () => '<div class="skeleton"></div>').join('');
+      Array.from({length:6},()=>'<div class="skeleton"></div>').join('');
   }
+
+  // --- stage 1: the grid -------------------------------------------------
+  stage.sectors='loading'; setStageNote();
   try{
-    const res = await fetch(LIVE_ENDPOINT, {cache:'no-store'});
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    if(!data.sectors || !data.constituents) throw new Error('Unexpected JSON shape');
-    state.sectors = data.sectors;
-    state.constituents = data.constituents;
-    state.meta = data;
-    if(state.selectedSector && !state.constituents.some(c => c.sector === state.selectedSector)){
-      closeDrilldown();
-    }
-    renderStamp(data);
-    setLiveStatus(`${data.sectors.length} sectors · ${data.constituents.length} stocks · ${data.source || 'live'}`, true);
-    document.getElementById('footer').textContent =
-      (data.note || '') + (data.weekly_missing ? `  ${data.weekly_missing} stock(s) lack a weekly reference.` : '');
+    const d = await getJSON('/api/sectors.json', force);
+    state.sectors = d.sectors;
+    state.meta = d;
+    renderStamp(d);
+    setLiveStatus(`${d.sectors.length} sectors · ${d.source}`, true);
+    document.getElementById('footer').textContent = d.note || '';
     rerender();
+    stage.sectors='done';
   }catch(e){
-    setLiveStatus('Could not load data: ' + e.message + ' — is app.py running?', false);
+    stage.sectors='error';
+    const unreachable=/Failed to fetch|NetworkError|load failed/i.test(e.message);
+    setLiveStatus('Could not load sectors: '+e.message+(unreachable?' — is app.py running?':''), false);
     if(!state.sectors.length) renderGrid();
-  }finally{
-    fetching = false;
-    btn.textContent = 'Refresh';
-    btn.disabled = false;
   }
+  setStageNote();
+  btn.textContent='Refresh'; btn.disabled=false;   // usable again as soon as the grid is up
+
+  // --- stages 2 and 3: behind the grid, in parallel ----------------------
+  stage.constituents='loading'; stage.sparks='loading'; setStageNote();
+  const jobs = [
+    getJSON('/api/constituents.json', force).then(d=>{
+      state.constituents = d.constituents;
+      if(state.meta) state.meta.weekly_missing = d.weekly_missing;
+      stage.constituents='done';
+      rerender(); setStageNote();
+    }).catch(e=>{ stage.constituents='error'; setStageNote();
+      console.warn('constituents failed', e.message); }),
+
+    getJSON('/api/sparks.json', force).then(d=>{
+      mergeSparks(d);
+      stage.sparks='done';
+      rerender(); setStageNote();
+    }).catch(e=>{ stage.sparks='error'; setStageNote();
+      console.warn('sparks failed', e.message); }),
+  ];
+  await Promise.allSettled(jobs);
+  fetching = false;
+  setStageNote();
+
+  // the rotation page is one click away; have its data ready before it is asked for
+  if(!force) prefetchRRG();
 }
-document.getElementById('refreshBtn').addEventListener('click', fetchLiveNow);
+
+let rrgPrefetched=false;
+function prefetchRRG(){
+  if(rrgPrefetched) return;
+  rrgPrefetched=true;
+  const go=()=>fetch('/api/rrg.json?scope=sectors&tf=weekly&tail=12&bench=nifty',
+                     {cache:'no-store'}).catch(()=>{});
+  ('requestIdleCallback' in window) ? requestIdleCallback(go,{timeout:4000}) : setTimeout(go,2500);
+}
+
+const fetchLiveNow = loadLive;
+document.getElementById('refreshBtn').addEventListener('click', ()=>loadLive(true));
 
 /* ---------------- auto-refresh ---------------- */
 const AUTO_MS = 30000;
