@@ -116,15 +116,14 @@
   .grid-line{stroke:var(--line);stroke-width:1;}
   .axis-txt{fill:var(--ink-3);font-size:10px;}
   .axis-title{fill:var(--ink-2);font-size:11px;font-weight:600;}
-  .tail-line{fill:none;stroke-width:1.4;opacity:.5;stroke-linejoin:round;stroke-linecap:round;}
-  .tail-dot{opacity:.45;}
-  .head-ring{fill:var(--surface);stroke-width:2;}
-  .head-label{font-size:11px;font-weight:650;fill:var(--ink);paint-order:stroke;
-              stroke:var(--surface);stroke-width:3.5px;stroke-linejoin:round;}
+  .tail-line{fill:none;stroke-width:1.6;opacity:.85;stroke-linejoin:round;stroke-linecap:round;}
+  .head-label{font-size:11.5px;font-weight:650;fill:var(--ink);paint-order:stroke;
+              stroke:var(--surface);stroke-width:3.5px;stroke-linejoin:round;
+              transition:fill .12s ease;}
   .series{cursor:pointer;}
-  .series.dim{opacity:.18;}
-  .series.hot .tail-line{opacity:.95;stroke-width:2;}
-  .series.hot .head-label{font-size:12px;}
+  .series.dim{opacity:.5;}
+  .series.dim .head-label{fill:var(--ink-3);}
+  .series.hot .head-label{fill:var(--ink);font-weight:700;}
 
   /* ---------- legend ---------- */
   .legend{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 14px;}
@@ -156,11 +155,18 @@
   .tv{color:var(--ink-3);text-decoration:none;font-size:11px;font-weight:600;}
   .tv:hover{color:var(--ink);text-decoration:underline;}
 
-  #tip{position:fixed;z-index:60;pointer-events:none;opacity:0;transform:translate(-50%,-125%);
-       background:var(--ink);color:var(--plane);font-size:12px;padding:6px 10px;border-radius:7px;
-       white-space:nowrap;transition:opacity .1s;box-shadow:var(--shadow);}
+  #tip{position:fixed;z-index:60;pointer-events:none;opacity:0;
+       transform:translate(-50%,calc(-100% - 15px));
+       background:#1c1c1b;color:#fff;border-radius:9px;padding:11px 14px;
+       white-space:nowrap;transition:opacity .1s;box-shadow:0 6px 24px rgba(0,0,0,.35);}
+  :root[data-theme="dark"] #tip{background:#000;border:1px solid rgba(255,255,255,.14);}
   #tip.show{opacity:1;}
-  #tip .t2{opacity:.72;font-size:11px;}
+  #tip .tn{font-size:14px;font-weight:700;margin-bottom:7px;}
+  #tip .tr{display:flex;justify-content:space-between;gap:24px;font-size:12.5px;
+           color:rgba(255,255,255,.72);line-height:1.6;}
+  #tip .tr b{color:#fff;font-weight:700;font-variant-numeric:tabular-nums;}
+  #tip .tq{margin-top:7px;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;}
+  #tip .tm{margin-top:6px;font-size:11px;color:rgba(255,255,255,.5);}
 
   /* ---------- help ---------- */
   .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;
@@ -456,9 +462,13 @@ function render(){
   // Axes are scaled independently and symmetrically around 100: the momentum axis
   // spans a much narrower range than the ratio axis under this formula, and forcing
   // one shared scale would flatten every tail into a horizontal line.
-  const xs=[], ys=[];
-  d.points.forEach(p=>p.tail.forEach(t=>{xs.push(t.x); ys.push(t.y);}));
-  const halfOf = arr => Math.max(0.25, ...arr.map(v=>Math.abs(v-100))) * 1.18;
+  // Scale to the DOTS, not the hidden tails. Measured on live data the tails span
+  // 1.6x the dots on x and 2.7x on y, so scaling to them squeezed every dot into the
+  // middle third. Dots get ~55% of the plot at 1.8x, which costs about 14 of 132 tail
+  // points - always the oldest, faintest end - and those are clipped to the plot rect
+  // rather than allowed to escape the panel.
+  const xs = d.points.map(p=>p.ratio), ys = d.points.map(p=>p.mom);
+  const halfOf = arr => Math.max(0.25, ...arr.map(v=>Math.abs(v-100))) * 1.8;
   const hx=halfOf(xs), hy=halfOf(ys);
   const x0=100-hx, x1=100+hx, y0=100-hy, y1=100+hy;
   const X = v => M.l + (v-x0)/(x1-x0)*iw;
@@ -466,44 +476,35 @@ function render(){
   const cx=X(100), cy=Y(100);
 
   const parts=[];
+  parts.push(`<defs><clipPath id="plotClip"><rect x="${M.l}" y="${M.t}" width="${iw}" height="${ih}"/></clipPath></defs>`);
   // quadrant washes
   parts.push(`<rect x="${cx}" y="${M.t}" width="${M.l+iw-cx}" height="${cy-M.t}" fill="var(--q-lead-bg)"/>`);
   parts.push(`<rect x="${cx}" y="${cy}" width="${M.l+iw-cx}" height="${M.t+ih-cy}" fill="var(--q-weak-bg)"/>`);
   parts.push(`<rect x="${M.l}" y="${cy}" width="${cx-M.l}" height="${M.t+ih-cy}" fill="var(--q-lag-bg)"/>`);
   parts.push(`<rect x="${M.l}" y="${M.t}" width="${cx-M.l}" height="${cy-M.t}" fill="var(--q-improve-bg)"/>`);
 
-  // gridlines at readable steps
-  const step = niceStep(hx), stepY = niceStep(hy);
-  for(let v=100-Math.floor(hx/step)*step; v<=x1+1e-9; v+=step){
-    if(Math.abs(v-100)<1e-9) continue;
-    parts.push(`<line class="grid-line" x1="${X(v)}" y1="${M.t}" x2="${X(v)}" y2="${M.t+ih}"/>`);
-    parts.push(`<text class="axis-txt" x="${X(v)}" y="${M.t+ih+15}" text-anchor="middle">${fmtAx(v)}</text>`);
-  }
-  for(let v=100-Math.floor(hy/stepY)*stepY; v<=y1+1e-9; v+=stepY){
-    if(Math.abs(v-100)<1e-9) continue;
-    parts.push(`<line class="grid-line" x1="${M.l}" y1="${Y(v)}" x2="${M.l+iw}" y2="${Y(v)}"/>`);
-    parts.push(`<text class="axis-txt" x="${M.l-8}" y="${Y(v)+3.5}" text-anchor="end">${fmtAx(v)}</text>`);
-  }
+  // No gridlines or tick numbers: the quadrant fills already say which side of 100
+  // a dot is on, and the exact values live in the hover card and the table.
 
   // centre crosshair = the benchmark
   parts.push(`<line class="axis-line" x1="${cx}" y1="${M.t}" x2="${cx}" y2="${M.t+ih}"/>`);
   parts.push(`<line class="axis-line" x1="${M.l}" y1="${cy}" x2="${M.l+iw}" y2="${cy}"/>`);
-  parts.push(`<text class="axis-txt" x="${cx}" y="${M.t+ih+15}" text-anchor="middle">100</text>`);
-  parts.push(`<text class="axis-txt" x="${M.l-8}" y="${cy+3.5}" text-anchor="end">100</text>`);
 
   // quadrant corner labels
-  const pad=9;
-  parts.push(`<text class="qlabel" x="${M.l+iw-pad}" y="${M.t+15}" text-anchor="end" fill="var(--q-lead)">Leading</text>`);
-  parts.push(`<text class="qlabel" x="${M.l+iw-pad}" y="${M.t+ih-7}" text-anchor="end" fill="var(--q-weak)">Weakening</text>`);
-  parts.push(`<text class="qlabel" x="${M.l+pad}" y="${M.t+ih-7}" fill="var(--q-lag)">Lagging</text>`);
-  parts.push(`<text class="qlabel" x="${M.l+pad}" y="${M.t+15}" fill="var(--q-improve)">Improving</text>`);
+  const pad=11;
+  parts.push(`<text class="qlabel" x="${M.l+iw-pad}" y="${M.t+17}" text-anchor="end" fill="var(--q-lead)">Leading</text>`);
+  parts.push(`<text class="qlabel" x="${M.l+iw-pad}" y="${M.t+ih-9}" text-anchor="end" fill="var(--q-weak)">Weakening</text>`);
+  parts.push(`<text class="qlabel" x="${M.l+pad}" y="${M.t+ih-9}" fill="var(--q-lag)">Lagging</text>`);
+  parts.push(`<text class="qlabel" x="${M.l+pad}" y="${M.t+17}" fill="var(--q-improve)">Improving</text>`);
 
   // axis titles
-  parts.push(`<text class="axis-title" x="${M.l+iw/2}" y="${H-10}" text-anchor="middle">RS-Ratio  →  relative strength</text>`);
-  parts.push(`<text class="axis-title" transform="translate(14,${M.t+ih/2}) rotate(-90)" text-anchor="middle">RS-Momentum  →  improving</text>`);
+  parts.push(`<text class="axis-title" x="${M.l+iw/2}" y="${H-12}" text-anchor="middle">weaker \u2190 RS-Ratio (relative strength) \u2192 stronger</text>`);
+  parts.push(`<text class="axis-title" transform="translate(16,${M.t+ih/2}) rotate(-90)" text-anchor="middle">falling \u2190 RS-Momentum \u2192 improving</text>`);
 
-  // series. Head labels are laid out first and nudged apart vertically, because
-  // sectors bunch tightly around the centre and raw labels overlap into mush.
+  // ---- series ----------------------------------------------------------
+  // Default state is dots only. The tail is drawn for the hovered series alone:
+  // eleven overlapping tails is noise, and one tail in isolation is the thing you
+  // actually want to read.
   const heads = d.points.map(p=>{
     const h=p.tail[p.tail.length-1];
     return {p, x:X(h.x), y:Y(h.y)};
@@ -511,40 +512,42 @@ function render(){
   const right = heads.filter(h=>h.x <= M.l+iw-96).sort((a,b)=>a.y-b.y);
   const left  = heads.filter(h=>h.x >  M.l+iw-96).sort((a,b)=>a.y-b.y);
   [right,left].forEach(group=>{
-    const GAP=12.5;
+    const GAP=13;
+    group.forEach(g=>{ g.ly=g.y+3.8; });
     for(let i=1;i<group.length;i++){
-      if(group[i].ly===undefined) group[i].ly=group[i].y;
-      const prev = group[i-1].ly ?? group[i-1].y;
-      group[i].ly = Math.max(group[i].y, prev+GAP);
+      group[i].ly = Math.max(group[i].ly, group[i-1].ly+GAP);
     }
-    group.forEach(g=>{ if(g.ly===undefined) g.ly=g.y; });
-    // keep the block inside the plot
     const over = (group.length? group[group.length-1].ly : 0) - (M.t+ih-4);
     if(over>0) group.forEach(g=>g.ly-=over);
   });
 
-  heads.forEach(({p,x:hx2,y:hy2,ly})=>{
+  // the hovered series is appended last so its tail sits above every other dot
+  const ordered = [...heads].sort((a,b)=>(a.p.name===state.hot?1:0)-(b.p.name===state.hot?1:0));
+  ordered.forEach(({p,x:hx2,y:hy2,ly})=>{
     const col=qColor(p.quadrant);
-    const pts=p.tail.map(t=>`${X(t.x).toFixed(1)},${Y(t.y).toFixed(1)}`).join(' ');
-    const dots=p.tail.slice(0,-1).map((t,j)=>{
-      const r=1.3+2.0*(j/Math.max(1,p.tail.length-2));
-      return `<circle class="tail-dot" cx="${X(t.x).toFixed(1)}" cy="${Y(t.y).toFixed(1)}" r="${r.toFixed(1)}" fill="${col}"/>`;
-    }).join('');
-    const cls = 'series' + (state.hot===p.name?' hot':'') + (state.hot&&state.hot!==p.name?' dim':'');
+    const isHot = state.hot===p.name;
+    const cls = 'series' + (isHot?' hot':'') + (state.hot&&!isHot?' dim':'');
     const toLeft = hx2 > M.l+iw-96;
-    const lx = toLeft ? hx2-9 : hx2+9;
+    const lx = toLeft ? hx2-10 : hx2+10;
     const anchor = toLeft ? 'end' : 'start';
-    // a leader line when the label had to be nudged away from its dot
-    const leader = Math.abs(ly-hy2) > 3
-      ? `<line x1="${hx2.toFixed(1)}" y1="${hy2.toFixed(1)}" x2="${lx.toFixed(1)}" y2="${(ly-3).toFixed(1)}" stroke="${col}" stroke-width="0.8" opacity=".38"/>` : '';
+
+    let trail='';
+    if(isHot && p.tail.length>1){
+      const pts=p.tail.map(t=>`${X(t.x).toFixed(1)},${Y(t.y).toFixed(1)}`).join(' ');
+      const n1=Math.max(1,p.tail.length-2);
+      const dots=p.tail.slice(0,-1).map((t,j)=>
+        `<circle cx="${X(t.x).toFixed(1)}" cy="${Y(t.y).toFixed(1)}" r="${(1.6+1.6*(j/n1)).toFixed(1)}" fill="${col}" opacity="${(0.40+0.50*(j/n1)).toFixed(2)}"/>`
+      ).join('');
+      trail = `<g clip-path="url(#plotClip)"><polyline class="tail-line" stroke="${col}" points="${pts}"/>${dots}</g>`;
+    }
+    const leader = Math.abs(ly-(hy2+3.8)) > 3
+      ? `<line x1="${hx2.toFixed(1)}" y1="${hy2.toFixed(1)}" x2="${lx.toFixed(1)}" y2="${(ly-3.5).toFixed(1)}" stroke="${col}" stroke-width="0.8" opacity=".35"/>` : '';
     parts.push(
       `<g class="${cls}" data-name="${p.name}">
-         <polyline class="tail-line" stroke="${col}" points="${pts}"/>
-         ${dots}${leader}
-         <circle class="head-ring" cx="${hx2.toFixed(1)}" cy="${hy2.toFixed(1)}" r="5.5" stroke="${col}"/>
-         <circle cx="${hx2.toFixed(1)}" cy="${hy2.toFixed(1)}" r="2.4" fill="${col}"/>
+         ${trail}${leader}
+         <circle class="head" cx="${hx2.toFixed(1)}" cy="${hy2.toFixed(1)}" r="${isHot?6:5}" fill="${col}"/>
          <text class="head-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}">${p.name}</text>
-         <circle cx="${hx2.toFixed(1)}" cy="${hy2.toFixed(1)}" r="15" fill="transparent"/>
+         <circle cx="${hx2.toFixed(1)}" cy="${hy2.toFixed(1)}" r="16" fill="transparent"/>
        </g>`);
   });
   svg.innerHTML = parts.join('');
@@ -583,6 +586,14 @@ function render(){
   document.getElementById('chartHint').textContent =
     `Tail = last ${d.tail} ${d.timeframe==='weekly'?'weeks':'days'} · newest dot is now`;
   wireHover();
+  // render() rebuilds the SVG, so the card has to be re-anchored to the new node
+  if(state.hot){
+    const dot=document.querySelector(`#rrg .series[data-name="${CSS.escape(state.hot)}"] .head`);
+    const p=d.points.find(x=>x.name===state.hot);
+    if(dot && p) showTip(p, dot); else hideTip();
+  }else{
+    hideTip();
+  }
 }
 
 function niceStep(half){
@@ -594,12 +605,18 @@ const fmtAx = v => (Math.abs(v-Math.round(v))<0.05 ? v.toFixed(0) : v.toFixed(1)
 
 /* ---------------- interaction ---------------- */
 const tip=document.getElementById('tip');
-function showTip(p,e){
+function showTip(p, anchorEl){
   const last=p.tail[p.tail.length-1];
-  tip.innerHTML = `<b>${p.label||p.name}</b> · ${p.quadrant}<br>
-    <span class="t2">RS-Ratio ${p.ratio.toFixed(2)} · RS-Mom ${p.mom.toFixed(2)} · heading ${bearing(p.heading)}<br>
-    ${p.tail.length} periods to ${last.d}</span>`;
-  tip.style.left=e.clientX+'px'; tip.style.top=e.clientY+'px';
+  tip.innerHTML =
+    `<div class="tn">${p.label||p.name}</div>` +
+    `<div class="tr"><span>RS-Ratio</span><b>${p.ratio.toFixed(1)}</b></div>` +
+    `<div class="tr"><span>RS-Momentum</span><b>${p.mom.toFixed(1)}</b></div>` +
+    `<div class="tq" style="color:${qColor(p.quadrant)}">${p.quadrant}</div>` +
+    `<div class="tm">heading ${bearing(p.heading)} · ${p.tail.length} periods to ${last.d}</div>`;
+  // anchored to the dot, so the card does not jitter with the pointer
+  const r = anchorEl.getBoundingClientRect();
+  tip.style.left = (r.left + r.width/2) + 'px';
+  tip.style.top  = (r.top + r.height/2) + 'px';
   tip.classList.add('show');
 }
 function hideTip(){ tip.classList.remove('show'); }
@@ -608,7 +625,6 @@ function wireHover(){
   const byName={}; state.data.points.forEach(p=>byName[p.name]=p);
   const set = n => { state.hot=n; render(); };
   document.querySelectorAll('#rrg .series').forEach(g=>{
-    g.addEventListener('mousemove', e=>showTip(byName[g.dataset.name], e));
     g.addEventListener('mouseenter', ()=>{ if(state.hot!==g.dataset.name) set(g.dataset.name); });
     g.addEventListener('mouseleave', ()=>{ hideTip(); set(null); });
     g.addEventListener('click', ()=>drill(g.dataset.name));

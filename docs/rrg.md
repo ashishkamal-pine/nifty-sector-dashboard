@@ -146,6 +146,23 @@ GET /api/rrg.json?scope=sectors|sector&name=<sector>&tf=weekly|daily&tail=N&benc
 The rank correlation is strongly positive but not 1.0, which is correct — RS-Ratio is a
 smoothed *trend* measure over a different window, not a point-to-point return.
 
+## How the chart behaves
+
+**Dots only by default.** Eleven overlapping tails is noise; one tail in isolation is
+the thing you actually want to read. Hovering a dot — or a row in the Positions table —
+reveals that series' tail, dims everything else, and shows a card with its RS-Ratio,
+RS-Momentum, quadrant and heading. The card is anchored to the dot rather than the
+cursor so it does not jitter.
+
+There are no gridlines or tick numbers: the quadrant fills already say which side of 100
+a dot is on, and the exact values are in the card and the table.
+
+**The axes scale to the dots, not the tails.** Measured on live data, tails span 1.6× the
+dots on the x-axis and 2.7× on the y — scaling to them squeezed every dot into the middle
+third of the plot. At 1.8× the dot range the dots get roughly 55% of the plot, which costs
+about 14 of 132 tail points; those are always the oldest, faintest end, and they are
+clipped to the plot rect rather than allowed to escape the panel.
+
 ## Reading it properly
 
 The dot is only where a sector is now. The tail is usually the more useful half:
@@ -173,5 +190,7 @@ sector's own constituents are doing.
 - **Resampled closes** are a few minutes early versus the official close.
 - **Labels crowd** when many names cluster near the centre. They are nudged apart
   vertically with leader lines, and hovering dims everything else.
+- **A long tail can be clipped** at the plot edge, because the axes are scaled to the
+  dots. The trimmed part is always the oldest end.
 - **Mid-week, the newest weekly point is a partial week** and will keep moving until
   Friday's close. The page says so with a banner when the latest point is not a Friday.
