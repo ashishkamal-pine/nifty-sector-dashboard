@@ -42,8 +42,24 @@ constituents 45s, sparklines 90s, RRG 120s.
 — verified with 8 simultaneous cold reads resulting in exactly 1 build. Without it,
 two tabs or an auto-refresh landing on a manual one would double upstream traffic.
 
+**The cache is bounded.** The RRG key space is 11 sectors × 2 timeframes × 5 tails ×
+2 benchmarks, so entries are dropped once older than an hour, and the oldest go first
+past a 64-entry cap. Eviction never disturbs a build in progress.
+
 **Failures do not poison the cache.** A background rebuild that throws leaves the last
 good value in place, and a failed build does not wedge the key for later callers.
+
+## A newer load supersedes an older one
+
+Stages 2 and 3 continue after the grid is up, so a refresh can be requested while the
+previous one is still finishing. Each load takes a ticket; a newer load invalidates
+older ones and results from a superseded load are discarded rather than overwriting
+fresher data.
+
+The earlier design used a single in-flight flag, which re-enabled the button after
+stage 1 but kept blocking until stage 3 — so a click during the background stages was
+silently swallowed by a button that looked perfectly usable. Auto-refresh still skips a
+tick while a load is genuinely running, so ticks cannot pile up.
 
 ## Warming and prefetching
 

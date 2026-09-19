@@ -547,7 +547,15 @@ function renderDrilldown(){
     (list[0] ? statTile('Best', list[0].symbol, fmtPct(list[0].pct), dirOf(list[0].pct)) : '') +
     (list.length > 1 ? statTile('Worst', list[list.length-1].symbol, fmtPct(list[list.length-1].pct), dirOf(list[list.length-1].pct)) : '');
 
-  document.getElementById('ddTableBody').innerHTML = list.map((c,i) => {
+  const tbody = document.getElementById('ddTableBody');
+  if(!list.length){
+    tbody.innerHTML = `<tr><td colspan="5" style="padding:26px 16px;text-align:center;color:var(--ink-2)">${
+      stage.constituents==='loading' ? 'Loading constituents…'
+      : stage.constituents==='error' ? 'Could not load constituents — press Refresh.'
+      : 'No constituents for this sector.'}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map((c,i) => {
     const cd = dirOf(c.pct);
     return `<tr class="${cd}">
       <td class="num" style="color:var(--ink-3)">${i+1}</td>
@@ -620,7 +628,13 @@ function setLiveStatus(text, ok){
    Each stage renders as it lands, so the page is useful long before it is
    complete. A stage failing leaves the ones before it intact.
 ------------------------------------------- */
-let fetching = false;
+// `gen` supersedes rather than blocks. The old code kept a single `fetching` flag
+// set until every background stage finished, but re-enabled the button after the
+// first one - so a click during stages 2 and 3 hit the guard and did nothing at
+// all, with the button looking perfectly usable. Now each load takes a ticket, a
+// newer load invalidates older ones, and results from a superseded load are
+// discarded instead of overwriting fresher data.
+let gen = 0;
 const stage = {sectors:'idle', constituents:'idle', sparks:'idle'};
 
 function setStageNote(){
@@ -648,8 +662,8 @@ function mergeSparks(sp){
 }
 
 async function loadLive(force){
-  if(fetching) return;
-  fetching = true;
+  const my = ++gen;
+  const current = () => my === gen;
   const btn=document.getElementById('refreshBtn');
   btn.textContent='Loading…'; btn.disabled=true;
   if(!state.sectors.length){
@@ -661,6 +675,7 @@ async function loadLive(force){
   stage.sectors='loading'; setStageNote();
   try{
     const d = await getJSON('/api/sectors.json', force);
+    if(!current()) return;
     state.sectors = d.sectors;
     state.meta = d;
     renderStamp(d);
@@ -669,6 +684,7 @@ async function loadLive(force){
     rerender();
     stage.sectors='done';
   }catch(e){
+    if(!current()) return;
     stage.sectors='error';
     const unreachable=/Failed to fetch|NetworkError|load failed/i.test(e.message);
     setLiveStatus('Could not load sectors: '+e.message+(unreachable?' — is app.py running?':''), false);
@@ -681,6 +697,7 @@ async function loadLive(force){
   stage.constituents='loading'; stage.sparks='loading'; setStageNote();
   const jobs = [
     getJSON('/api/constituents.json', force).then(d=>{
+      if(!current()) return;
       state.constituents = d.constituents;
       if(state.meta) state.meta.weekly_missing = d.weekly_missing;
       stage.constituents='done';
@@ -689,6 +706,7 @@ async function loadLive(force){
       console.warn('constituents failed', e.message); }),
 
     getJSON('/api/sparks.json', force).then(d=>{
+      if(!current()) return;
       mergeSparks(d);
       stage.sparks='done';
       rerender(); setStageNote();
@@ -696,7 +714,7 @@ async function loadLive(force){
       console.warn('sparks failed', e.message); }),
   ];
   await Promise.allSettled(jobs);
-  fetching = false;
+  if(!current()) return;                 // a newer load owns the page now
   setStageNote();
 
   // the rotation page is one click away; have its data ready before it is asked for
@@ -718,6 +736,8 @@ document.getElementById('refreshBtn').addEventListener('click', ()=>loadLive(tru
 /* ---------------- auto-refresh ---------------- */
 const AUTO_MS = 30000;
 let autoTimer = null;
+const loading = () => Object.values(stage).some(v=>v==='loading');
+
 function setAuto(on){
   const btn = document.getElementById('autoBtn');
   if(autoTimer){ clearInterval(autoTimer); autoTimer = null; }

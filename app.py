@@ -50,6 +50,12 @@ RRG_FILE = "RRG.html"
 BENCHMARK = ("^NSEI", "NIFTY 50")     # RRG benchmark
 
 STORE = Store(workers=4)
+
+# How long each part stays fresh before a read triggers a background rebuild.
+# Defined once: /api/<part>.json and the combined /api/live_data.json both read
+# from the same keys, and it would be wrong for the same entry to be considered
+# fresh for 45s down one route and 90s down another.
+FRESH = {"sectors": 30, "constituents": 45, "sparks": 90, "rrg": 120}
 SPARK_URL = "https://query2.finance.yahoo.com/v7/finance/spark"
 BATCH_SIZE = 20           # symbols per request; 30+ returns HTTP 400
 RANGE = "3mo"             # enough bars to derive weekly and monthly references
@@ -447,9 +453,9 @@ def build_sparks(symbols=None):
 
 def build_combined():
     """The original single payload, assembled from the parts (kept for /live_data.json)."""
-    sec = STORE.get("sectors", build_sectors)[0]
-    con = STORE.get("constituents", build_constituents)[0]
-    spk = STORE.get("sparks", build_sparks)[0]
+    sec = STORE.get("sectors", build_sectors, fresh=FRESH["sectors"])[0]
+    con = STORE.get("constituents", build_constituents, fresh=FRESH["constituents"])[0]
+    spk = STORE.get("sparks", build_sparks, fresh=FRESH["sparks"])[0]
     sectors = [dict(s, spark=spk["sectors"].get(s["sector"], {})) for s in sec["sectors"]]
     constituents = [dict(c, spark=spk["constituents"].get(c["symbol"], {}))
                     for c in con["constituents"]]
@@ -689,7 +695,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             try:
                 make = lambda: build_rrg(scope=key[0], name=key[1], timeframe=key[2],
                                          tail=key[3], bench=key[4])
-                payload, age, state = STORE.get(("rrg",) + key, make, fresh=120, force=force)
+                payload, age, state = STORE.get(("rrg",) + key, make,
+                                                fresh=FRESH["rrg"], force=force)
                 body = json.dumps(dict(payload, cache={"state": state,
                                                        "age": round(age, 1)})).encode()
             except Exception as e:
@@ -708,12 +715,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # expensive it is: sector levels are cheap and move constantly, sparkline
         # series are expensive and barely change within a minute.
         PARTS = {
-            "/api/sectors.json":      ("sectors",      build_sectors,      30),
-            "/api/constituents.json": ("constituents", build_constituents, 45),
-            "/api/sparks.json":       ("sparks",       build_sparks,       90),
+            "/api/sectors.json":      ("sectors",      build_sectors),
+            "/api/constituents.json": ("constituents", build_constituents),
+            "/api/sparks.json":       ("sparks",       build_sparks),
         }
         if path in PARTS:
-            key, builder, fresh = PARTS[path]
+            key, builder = PARTS[path]
+            fresh = FRESH[key]
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             force = (q.get("force") or [""])[0] in ("1", "true", "yes")
             try:

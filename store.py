@@ -36,11 +36,17 @@ import threading
 
 
 class Store:
-    def __init__(self, workers=4):
+    def __init__(self, workers=4, max_entries=64, hard_ttl=3600):
         self._data = {}                       # key -> (built_at, value)
         self._lock = threading.Lock()
         self._building = {}                   # key -> Event, for single-flight
         self._sem = threading.Semaphore(workers)
+        # The RRG key space is large - 11 sectors x 2 timeframes x 5 tails x 2
+        # benchmarks - and nothing ever asked the cache to forget. Entries are
+        # dropped once they are older than any caller could use, and the oldest go
+        # first if the cache is still over its cap.
+        self._max_entries = max_entries
+        self._hard_ttl = hard_ttl
 
     # ------------------------------------------------------------------
     def peek(self, key):
@@ -53,6 +59,16 @@ class Store:
     def put(self, key, value):
         with self._lock:
             self._data[key] = (time.time(), value)
+            self._evict_locked()
+
+    def _evict_locked(self):
+        now = time.time()
+        for k in [k for k, v in self._data.items() if now - v[0] > self._hard_ttl]:
+            del self._data[k]
+        if len(self._data) > self._max_entries:
+            for k, _ in sorted(self._data.items(), key=lambda kv: kv[1][0])[
+                    :len(self._data) - self._max_entries]:
+                del self._data[k]
 
     def invalidate(self, prefix=None):
         with self._lock:
