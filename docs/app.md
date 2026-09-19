@@ -36,6 +36,8 @@ Yahoo's chart endpoints require one, so there is no secret to store, expose, or 
 |---|---|
 | `/` | `Sector_Performance_Board.html` |
 | `/api/live_data.json` | Fetches NSE + Yahoo **on request** and returns the payload |
+| `/rrg` | The Relative Rotation Graph page — see [rrg.md](rrg.md) |
+| `/api/rrg.json` | RRG data; takes `scope`, `name`, `tf`, `tail`, `bench`. Cached 120s |
 | `/live_data.json` | Alias for the same payload |
 
 Bound to **`127.0.0.1`**, not `0.0.0.0` — not reachable from your network. It serves

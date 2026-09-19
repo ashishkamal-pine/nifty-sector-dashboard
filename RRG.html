@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NIFTY Relative Rotation Graph</title>
+<style>
+  /* ============================================================
+     THEME - same tokens as the performance board
+     ============================================================ */
+  :root{
+    color-scheme: light;
+    --plane:#f9f9f7; --surface:#fcfcfb; --surface-2:#f2f1ee;
+    --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#898781;
+    --line:#e1e0d9;
+    --border:rgba(11,11,11,0.10); --border-strong:rgba(11,11,11,0.22);
+    --up:#006300; --down:#d03b3b;
+    /* the four RRG quadrants - the canonical green/yellow/red/blue */
+    --q-lead:#0a7a0a; --q-weak:#a97400; --q-lag:#d03b3b; --q-improve:#2a78d6;
+    --q-lead-bg:rgba(12,163,12,0.07); --q-weak-bg:rgba(250,178,25,0.09);
+    --q-lag-bg:rgba(208,59,59,0.06);  --q-improve-bg:rgba(42,120,214,0.07);
+    --shadow:0 1px 2px rgba(11,11,11,0.04), 0 8px 24px rgba(11,11,11,0.05);
+    --radius:12px; --radius-sm:8px;
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --plane:#0d0d0d; --surface:#1a1a19; --surface-2:#232321;
+    --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#898781;
+    --line:#2c2c2a;
+    --border:rgba(255,255,255,0.10); --border-strong:rgba(255,255,255,0.24);
+    --up:#0ca30c; --down:#e66767;
+    --q-lead:#0ca30c; --q-weak:#fab219; --q-lag:#e66767; --q-improve:#3987e5;
+    --q-lead-bg:rgba(12,163,12,0.10); --q-weak-bg:rgba(250,178,25,0.09);
+    --q-lag-bg:rgba(230,103,103,0.09); --q-improve-bg:rgba(57,135,229,0.10);
+    --shadow:0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+  }
+
+  *{box-sizing:border-box;}
+  [hidden]{display:none!important;}
+  html,body{margin:0;}
+  body{
+    background:var(--plane);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  }
+  .num{font-variant-numeric:tabular-nums;}
+  .app{max-width:1280px;margin:0 auto;padding:28px 16px 72px;}
+
+  /* ---------- header ---------- */
+  header{display:flex;justify-content:space-between;align-items:flex-start;
+         gap:20px;flex-wrap:wrap;margin-bottom:18px;}
+  .eyebrow{font-size:11px;letter-spacing:0.12em;text-transform:uppercase;
+           color:var(--ink-3);margin-bottom:6px;font-weight:600;}
+  h1{font-size:26px;line-height:1.15;margin:0;font-weight:640;letter-spacing:-0.02em;}
+  .sub{color:var(--ink-2);font-size:13px;margin-top:5px;max-width:62ch;}
+  .controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+
+  nav.tabs{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);
+           border-radius:var(--radius-sm);padding:2px;margin-bottom:16px;}
+  nav.tabs a{
+    text-decoration:none;color:var(--ink-2);font-size:13px;font-weight:500;
+    padding:6px 14px;border-radius:6px;transition:background .12s,color .12s;
+  }
+  nav.tabs a:hover{color:var(--ink);}
+  nav.tabs a[aria-current="page"]{background:var(--surface);color:var(--ink);font-weight:600;}
+
+  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);
+       border-radius:var(--radius-sm);padding:2px;}
+  .seg button{border:none;background:transparent;color:var(--ink-2);font:inherit;
+              font-size:13px;font-weight:500;padding:6px 12px;border-radius:6px;cursor:pointer;
+              transition:background .12s,color .12s;}
+  .seg button:hover{color:var(--ink);}
+  .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);font-weight:600;
+              box-shadow:0 1px 2px rgba(0,0,0,0.06);}
+
+  .btn{font:inherit;font-size:13px;font-weight:500;background:var(--surface);color:var(--ink);
+       border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 13px;
+       cursor:pointer;display:inline-flex;align-items:center;gap:7px;
+       transition:border-color .12s,background .12s;}
+  .btn:hover{border-color:var(--border-strong);}
+  .btn:disabled{opacity:.55;cursor:default;}
+  .btn.primary{background:var(--ink);color:var(--plane);border-color:var(--ink);font-weight:600;}
+  .btn.primary:hover{opacity:.88;}
+  .icon-btn{padding:7px 10px;}
+  select.btn{padding-right:26px;}
+
+  .meta{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;
+        font-size:12px;color:var(--ink-3);margin-bottom:18px;}
+  .meta b{color:var(--ink-2);font-weight:600;}
+  .meta .sep{opacity:.5;}
+  #status.err{color:var(--down);}
+
+  /* ---------- layout ---------- */
+  .cols{display:grid;grid-template-columns:minmax(0,1.32fr) minmax(300px,1fr);gap:16px;align-items:start;}
+  @media (max-width:980px){ .cols{grid-template-columns:1fr;} }
+
+  .panel{background:var(--surface);border:1px solid var(--border);
+         border-radius:var(--radius);overflow:hidden;}
+  .panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+              padding:12px 16px;border-bottom:1px solid var(--line);background:var(--surface-2);}
+  .panel-head h2{font-size:11px;letter-spacing:0.08em;text-transform:uppercase;
+                 color:var(--ink-3);margin:0;font-weight:600;}
+  .panel-head .rhs{font-size:12px;color:var(--ink-3);}
+
+  /* ---------- chart ---------- */
+  #chartWrap{padding:10px 12px 12px;}
+  svg#rrg{display:block;width:100%;height:auto;touch-action:none;}
+  .qlabel{font-size:10.5px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;}
+  .axis-line{stroke:var(--ink-3);stroke-width:1;opacity:.55;}
+  .grid-line{stroke:var(--line);stroke-width:1;}
+  .axis-txt{fill:var(--ink-3);font-size:10px;}
+  .axis-title{fill:var(--ink-2);font-size:11px;font-weight:600;}
+  .tail-line{fill:none;stroke-width:1.4;opacity:.5;stroke-linejoin:round;stroke-linecap:round;}
+  .tail-dot{opacity:.45;}
+  .head-ring{fill:var(--surface);stroke-width:2;}
+  .head-label{font-size:11px;font-weight:650;fill:var(--ink);paint-order:stroke;
+              stroke:var(--surface);stroke-width:3.5px;stroke-linejoin:round;}
+  .series{cursor:pointer;}
+  .series.dim{opacity:.18;}
+  .series.hot .tail-line{opacity:.95;stroke-width:2;}
+  .series.hot .head-label{font-size:12px;}
+
+  /* ---------- legend ---------- */
+  .legend{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 14px;}
+  .lg{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2);
+      border:1px solid var(--border);border-radius:999px;padding:3px 10px;background:var(--surface);}
+  .lg .sw{width:9px;height:9px;border-radius:2px;}
+  .lg b{color:var(--ink);font-weight:650;}
+
+  /* ---------- table ---------- */
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  thead th{text-align:left;font-size:10.5px;letter-spacing:0.07em;text-transform:uppercase;
+           color:var(--ink-3);font-weight:600;padding:9px 12px;
+           border-bottom:1px solid var(--line);background:var(--surface-2);}
+  thead th.r,tbody td.r{text-align:right;}
+  tbody td{padding:7px 12px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr{cursor:pointer;}
+  tbody tr:hover td,tbody tr.hot td{background:var(--surface-2);}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:650;
+        border-radius:999px;padding:2px 8px;border:1px solid transparent;}
+  .chip .sw{width:7px;height:7px;border-radius:50%;}
+  td.nm{font-weight:600;}
+  .hd{display:inline-block;font-size:12px;color:var(--ink-3);}
+
+  .tv{color:var(--ink-3);text-decoration:none;font-size:11px;font-weight:600;}
+  .tv:hover{color:var(--ink);text-decoration:underline;}
+
+  #tip{position:fixed;z-index:60;pointer-events:none;opacity:0;transform:translate(-50%,-125%);
+       background:var(--ink);color:var(--plane);font-size:12px;padding:6px 10px;border-radius:7px;
+       white-space:nowrap;transition:opacity .1s;box-shadow:var(--shadow);}
+  #tip.show{opacity:1;}
+  #tip .t2{opacity:.72;font-size:11px;}
+
+  /* ---------- help ---------- */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;
+         transition:opacity .15s;z-index:70;}
+  .scrim.open{opacity:1;pointer-events:auto;}
+  .sheet{position:fixed;top:0;right:0;height:100%;width:min(560px,100%);z-index:80;
+         background:var(--plane);border-left:1px solid var(--border);
+         transform:translateX(100%);transition:transform .2s ease;overflow-y:auto;}
+  .sheet.open{transform:none;}
+  .sheet-head{position:sticky;top:0;background:var(--plane);border-bottom:1px solid var(--line);
+              padding:16px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;}
+  .sheet-head h2{margin:0;font-size:17px;font-weight:650;}
+  .sheet-body{padding:18px 22px 60px;}
+  .sheet-body h3{font-size:13px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3);
+                 margin:26px 0 8px;font-weight:650;}
+  .sheet-body h3:first-child{margin-top:0;}
+  .sheet-body p{margin:0 0 11px;font-size:14px;color:var(--ink-2);}
+  .sheet-body strong{color:var(--ink);}
+  .sheet-body code{background:var(--surface-2);padding:1px 5px;border-radius:4px;
+                   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--ink);}
+  .sheet-body pre{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
+                  padding:12px 14px;overflow-x:auto;font-size:12.5px;margin:0 0 12px;
+                  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink-2);}
+  .qgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 14px;}
+  .qcard{border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 13px;}
+  .qcard .qn{font-size:12px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:3px;}
+  .qcard .qd{font-size:12px;color:var(--ink-2);}
+  .qcard .qf{font-size:11px;color:var(--ink-3);margin-top:5px;font-variant-numeric:tabular-nums;}
+  .note{border-left:2px solid var(--border-strong);padding:2px 0 2px 12px;margin:0 0 12px;
+        font-size:13px;color:var(--ink-2);}
+  .sheet-body ul{margin:0 0 12px;padding-left:20px;font-size:14px;color:var(--ink-2);}
+  .sheet-body li{margin-bottom:5px;}
+
+  .empty{padding:44px 20px;text-align:center;color:var(--ink-2);}
+  .empty code{background:var(--surface-2);padding:2px 6px;border-radius:4px;
+              font-family:ui-monospace,monospace;color:var(--ink);}
+  footer{margin-top:24px;font-size:11.5px;color:var(--ink-3);line-height:1.65;}
+
+  @media (prefers-reduced-motion: reduce){ *{transition:none!important;} }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <nav class="tabs">
+    <a href="/">Performance board</a>
+    <a href="/rrg" aria-current="page">Rotation (RRG)</a>
+  </nav>
+
+  <header>
+    <div>
+      <div class="eyebrow">NSE · Relative Rotation</div>
+      <h1 id="title">Sector Rotation</h1>
+      <div class="sub" id="lede">
+        Where each sector sits against the benchmark, and which way it is heading.
+        Right of centre is relatively strong; above centre that strength is improving.
+      </div>
+    </div>
+    <div class="controls">
+      <select class="btn" id="scopeSel" aria-label="What to plot"></select>
+      <div class="seg" id="tfSeg" role="group" aria-label="Timeframe">
+        <button data-tf="weekly" aria-pressed="true">Weekly</button>
+        <button data-tf="daily" aria-pressed="false">Daily</button>
+      </div>
+      <div class="seg" id="benchSeg" role="group" aria-label="Benchmark" hidden>
+        <button data-bench="nifty" aria-pressed="true">vs NIFTY 50</button>
+        <button data-bench="sector" aria-pressed="false">vs Sector</button>
+      </div>
+      <select class="btn" id="tailSel" aria-label="Tail length">
+        <option value="4">4 periods</option>
+        <option value="8">8 periods</option>
+        <option value="12" selected>12 periods</option>
+        <option value="20">20 periods</option>
+      </select>
+      <button class="btn" id="helpBtn" aria-haspopup="dialog">? How to read this</button>
+      <button class="btn primary" id="refreshBtn">Refresh</button>
+      <button class="btn icon-btn" id="themeBtn" aria-label="Switch theme">☾</button>
+    </div>
+  </header>
+
+  <div class="meta">
+    <span id="status">Loading…</span>
+    <span class="sep">·</span>
+    <span>Benchmark <b id="mBench">NIFTY 50</b></span>
+    <span class="sep">·</span>
+    <span>Smoothing <b id="mSmooth">10</b></span>
+    <span class="sep">·</span>
+    <span>As of <b id="mAsOf">—</b></span>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <div class="panel-head">
+        <h2 id="chartTitle">Rotation graph</h2>
+        <span class="rhs" id="chartHint">Tail = last 12 periods · newest dot is the current position</span>
+      </div>
+      <div id="chartWrap"><svg id="rrg" viewBox="0 0 660 620" role="img" aria-label="Relative rotation graph"></svg></div>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Positions</h2>
+        <span class="rhs" id="tblHint"></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Name</th><th>Quadrant</th>
+            <th class="r">RS-Ratio</th><th class="r">RS-Mom</th><th class="r">Heading</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <footer id="footer"></footer>
+</div>
+
+<div id="tip"></div>
+
+<!-- ============================ HELP ============================ -->
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <div class="sheet-head">
+    <h2 id="sheetTitle">How to read a Relative Rotation Graph</h2>
+    <button class="btn icon-btn" id="closeHelp" aria-label="Close">✕</button>
+  </div>
+  <div class="sheet-body">
+
+    <h3>The one-sentence version</h3>
+    <p>An RRG answers two questions at once: <strong>is this sector beating the
+    benchmark</strong>, and <strong>is that lead growing or shrinking</strong>. Everything
+    on the chart is relative to NIFTY 50 — nothing here tells you whether the market
+    itself is going up.</p>
+
+    <h3>The two axes</h3>
+    <p><strong>RS-Ratio (horizontal)</strong> — relative strength. Right of centre means the
+    sector has been outperforming the benchmark; left means underperforming.</p>
+    <p><strong>RS-Momentum (vertical)</strong> — the rate of change of that relative strength.
+    Above centre means the sector's relative performance is improving; below means it is
+    deteriorating.</p>
+    <p>Both are normalised around <strong>100</strong>, so the crosshair in the middle
+    <em>is</em> the benchmark. A sector sitting exactly at the centre is moving in line with
+    NIFTY 50.</p>
+
+    <h3>The four quadrants</h3>
+    <div class="qgrid">
+      <div class="qcard" style="border-color:var(--q-improve)">
+        <div class="qn" style="color:var(--q-improve)">Improving</div>
+        <div class="qd">Still weaker than the benchmark, but catching up. Early recovery — often where the next leaders come from.</div>
+        <div class="qf">ratio &lt; 100 · momentum &gt; 100</div>
+      </div>
+      <div class="qcard" style="border-color:var(--q-lead)">
+        <div class="qn" style="color:var(--q-lead)">Leading</div>
+        <div class="qd">Stronger than the benchmark and still pulling away. Established leadership.</div>
+        <div class="qf">ratio &gt; 100 · momentum &gt; 100</div>
+      </div>
+      <div class="qcard" style="border-color:var(--q-lag)">
+        <div class="qn" style="color:var(--q-lag)">Lagging</div>
+        <div class="qd">Weaker than the benchmark and still falling behind. Sustained underperformance.</div>
+        <div class="qf">ratio &lt; 100 · momentum &lt; 100</div>
+      </div>
+      <div class="qcard" style="border-color:var(--q-weak)">
+        <div class="qn" style="color:var(--q-weak)">Weakening</div>
+        <div class="qd">Still ahead of the benchmark, but the lead is shrinking. Leadership may be rolling over.</div>
+        <div class="qf">ratio &gt; 100 · momentum &lt; 100</div>
+      </div>
+    </div>
+    <p class="note">The quadrants are laid out so that the strong side is on the right and
+    the improving side is on top — which is why Improving sits top-left and Weakening
+    bottom-right.</p>
+
+    <h3>Rotation is clockwise</h3>
+    <p>The idealised cycle runs <strong>Improving → Leading → Weakening → Lagging →
+    Improving</strong>, clockwise around the centre. Momentum turns before strength does, so
+    a sector normally enters Weakening before it ever reaches Lagging.</p>
+    <p>It is an idealisation, not a rule. Sectors routinely cut across the middle, reverse,
+    or sit in one quadrant for months.</p>
+
+    <h3>Read the tail, not just the dot</h3>
+    <p>The dot is only where a sector is <em>now</em>. The tail behind it shows how it got
+    there, and that is usually the more useful half:</p>
+    <ul>
+      <li><strong>Long tail</strong> — moving fast and decisively.</li>
+      <li><strong>Short, knotted tail</strong> — going nowhere; the signal is weak.</li>
+      <li><strong>Leading but curling down</strong> — heading for Weakening. Be careful adding fresh exposure.</li>
+      <li><strong>Lagging but curling up</strong> — possible recovery, not yet confirmed.</li>
+      <li><strong>Improving and pushing up-and-right</strong> — the most interesting quadrant: early strength.</li>
+    </ul>
+    <p>The <strong>Heading</strong> column is the compass bearing of the last leg, so NE means
+    up-and-right (strengthening on both axes) and SW means down-and-left.</p>
+
+    <h3>Sectors, then stocks</h3>
+    <p>Use the dropdown to switch from the eleven sector indices to the constituents of any
+    one sector. For stocks you can pick the benchmark:</p>
+    <ul>
+      <li><strong>vs NIFTY 50</strong> — how the stock is doing against the whole market.</li>
+      <li><strong>vs Sector</strong> — how it is doing against its own peers, which is the better
+      question for picking leaders <em>within</em> a sector.</li>
+    </ul>
+
+    <h3>Weekly vs Daily</h3>
+    <p><strong>Weekly</strong> is the standard and the default: slower, cleaner, better for
+    medium-term rotation. <strong>Daily</strong> reacts sooner but is noisier, so it uses heavier
+    smoothing here (n=20 against n=10 weekly). Values from the two are not comparable —
+    each is its own calculation.</p>
+
+    <h3>How these numbers are calculated</h3>
+    <pre>RS          = 100 × Sector / Benchmark
+RS-Ratio    = 100 × EMA(RS, n) / EMA(EMA(RS, n), n)
+RS-Momentum = 100 × RS-Ratio / EMA(RS-Ratio, n)</pre>
+    <p class="note">This is the widely used <strong>approximation</strong> of the original
+    JdK RS-Ratio / RS-Momentum, not the proprietary formula used by commercial RRG
+    platforms. Quadrants and direction are faithful; the absolute distance from 100 will not
+    match a vendor's chart, so do not compare the raw numbers across tools.</p>
+    <p>One consequence of this formula: RS-Momentum varies over a much narrower band than
+    RS-Ratio. The chart therefore scales each axis independently around 100. The centre
+    lines still sit at exactly 100, so quadrant membership is unaffected.</p>
+
+    <h3>Where the prices come from</h3>
+    <p>Two years of hourly bars, resampled to daily closes and then to weekly closes — the
+    same treatment for every series including the benchmark. Yahoo carries daily bars for
+    only three of the eleven sector indices, so resampling is the only way to give all
+    eleven an identical basis. Checked against real daily bars where both exist: median
+    deviation 0.05%.</p>
+
+    <h3>What it will not tell you</h3>
+    <ul>
+      <li><strong>Nothing about absolute direction.</strong> A sector can sit in Leading while
+      falling, if it is falling more slowly than the market.</li>
+      <li><strong>Nothing about valuation, breadth or liquidity.</strong></li>
+      <li><strong>Not a signal on its own.</strong> Pair it with price trend and the behaviour of
+      the sector's own constituents.</li>
+    </ul>
+  </div>
+</aside>
+
+<script>
+/* state is declared first: applyTheme() runs immediately and reads state.data */
+const state = { scope:'sectors', sector:null, tf:'weekly', tail:12, bench:'nifty',
+                data:null, hot:null, fetching:false };
+
+/* ---------------- theme ---------------- */
+const THEME_KEY='spb-theme';
+function applyTheme(t){
+  const th = t==='light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', th);
+  const b=document.getElementById('themeBtn');
+  b.textContent = th==='light' ? '☀' : '☾';
+  b.title = 'Switch to ' + (th==='light'?'dark':'light') + ' theme';
+  try{ localStorage.setItem(THEME_KEY, th); }catch(e){}
+  if(state.data) render();               // quadrant colours are theme-dependent
+}
+(function(){ let t='dark'; try{ t=localStorage.getItem(THEME_KEY)||'dark'; }catch(e){} applyTheme(t); })();
+document.getElementById('themeBtn').addEventListener('click',()=>{
+  applyTheme(document.documentElement.getAttribute('data-theme')==='light'?'dark':'light');
+});
+
+/* ---------------- quadrant colours ---------------- */
+const QCOL = {Leading:'--q-lead', Weakening:'--q-weak', Lagging:'--q-lag', Improving:'--q-improve'};
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const qColor = q => cssVar(QCOL[q] || '--ink-3');
+const COMPASS = ['N','NE','E','SE','S','SW','W','NW'];
+const bearing = d => d==null ? '—' : COMPASS[Math.round(d/45)%8];
+
+/* ---------------- chart ---------------- */
+function render(){
+  const d = state.data;
+  const svg = document.getElementById('rrg');
+  if(!d || !d.points.length){
+    svg.innerHTML = `<text x="330" y="300" text-anchor="middle" class="axis-txt">No data</text>`;
+    document.getElementById('tbody').innerHTML =
+      `<tr><td colspan="5" class="empty">Nothing to plot.</td></tr>`;
+    document.getElementById('legend').innerHTML='';
+    return;
+  }
+
+  const W=660, H=620, M={t:26,r:26,b:44,l:52};
+  const iw=W-M.l-M.r, ih=H-M.t-M.b;
+
+  // Axes are scaled independently and symmetrically around 100: the momentum axis
+  // spans a much narrower range than the ratio axis under this formula, and forcing
+  // one shared scale would flatten every tail into a horizontal line.
+  const xs=[], ys=[];
+  d.points.forEach(p=>p.tail.forEach(t=>{xs.push(t.x); ys.push(t.y);}));
+  const halfOf = arr => Math.max(0.25, ...arr.map(v=>Math.abs(v-100))) * 1.18;
+  const hx=halfOf(xs), hy=halfOf(ys);
+  const x0=100-hx, x1=100+hx, y0=100-hy, y1=100+hy;
+  const X = v => M.l + (v-x0)/(x1-x0)*iw;
+  const Y = v => M.t + (1-(v-y0)/(y1-y0))*ih;
+  const cx=X(100), cy=Y(100);
+
+  const parts=[];
+  // quadrant washes
+  parts.push(`<rect x="${cx}" y="${M.t}" width="${M.l+iw-cx}" height="${cy-M.t}" fill="var(--q-lead-bg)"/>`);
+  parts.push(`<rect x="${cx}" y="${cy}" width="${M.l+iw-cx}" height="${M.t+ih-cy}" fill="var(--q-weak-bg)"/>`);
+  parts.push(`<rect x="${M.l}" y="${cy}" width="${cx-M.l}" height="${M.t+ih-cy}" fill="var(--q-lag-bg)"/>`);
+  parts.push(`<rect x="${M.l}" y="${M.t}" width="${cx-M.l}" height="${cy-M.t}" fill="var(--q-improve-bg)"/>`);
+
+  // gridlines at readable steps
+  const step = niceStep(hx), stepY = niceStep(hy);
+  for(let v=100-Math.floor(hx/step)*step; v<=x1+1e-9; v+=step){
+    if(Math.abs(v-100)<1e-9) continue;
+    parts.push(`<line class="grid-line" x1="${X(v)}" y1="${M.t}" x2="${X(v)}" y2="${M.t+ih}"/>`);
+    parts.push(`<text class="axis-txt" x="${X(v)}" y="${M.t+ih+15}" text-anchor="middle">${fmtAx(v)}</text>`);
+  }
+  for(let v=100-Math.floor(hy/stepY)*stepY; v<=y1+1e-9; v+=stepY){
+    if(Math.abs(v-100)<1e-9) continue;
+    parts.push(`<line class="grid-line" x1="${M.l}" y1="${Y(v)}" x2="${M.l+iw}" y2="${Y(v)}"/>`);
+    parts.push(`<text class="axis-txt" x="${M.l-8}" y="${Y(v)+3.5}" text-anchor="end">${fmtAx(v)}</text>`);
+  }
+
+  // centre crosshair = the benchmark
+  parts.push(`<line class="axis-line" x1="${cx}" y1="${M.t}" x2="${cx}" y2="${M.t+ih}"/>`);
+  parts.push(`<line class="axis-line" x1="${M.l}" y1="${cy}" x2="${M.l+iw}" y2="${cy}"/>`);
+  parts.push(`<text class="axis-txt" x="${cx}" y="${M.t+ih+15}" text-anchor="middle">100</text>`);
+  parts.push(`<text class="axis-txt" x="${M.l-8}" y="${cy+3.5}" text-anchor="end">100</text>`);
+
+  // quadrant corner labels
+  const pad=9;
+  parts.push(`<text class="qlabel" x="${M.l+iw-pad}" y="${M.t+15}" text-anchor="end" fill="var(--q-lead)">Leading</text>`);
+  parts.push(`<text class="qlabel" x="${M.l+iw-pad}" y="${M.t+ih-7}" text-anchor="end" fill="var(--q-weak)">Weakening</text>`);
+  parts.push(`<text class="qlabel" x="${M.l+pad}" y="${M.t+ih-7}" fill="var(--q-lag)">Lagging</text>`);
+  parts.push(`<text class="qlabel" x="${M.l+pad}" y="${M.t+15}" fill="var(--q-improve)">Improving</text>`);
+
+  // axis titles
+  parts.push(`<text class="axis-title" x="${M.l+iw/2}" y="${H-10}" text-anchor="middle">RS-Ratio  →  relative strength</text>`);
+  parts.push(`<text class="axis-title" transform="translate(14,${M.t+ih/2}) rotate(-90)" text-anchor="middle">RS-Momentum  →  improving</text>`);
+
+  // series. Head labels are laid out first and nudged apart vertically, because
+  // sectors bunch tightly around the centre and raw labels overlap into mush.
+  const heads = d.points.map(p=>{
+    const h=p.tail[p.tail.length-1];
+    return {p, x:X(h.x), y:Y(h.y)};
+  });
+  const right = heads.filter(h=>h.x <= M.l+iw-96).sort((a,b)=>a.y-b.y);
+  const left  = heads.filter(h=>h.x >  M.l+iw-96).sort((a,b)=>a.y-b.y);
+  [right,left].forEach(group=>{
+    const GAP=12.5;
+    for(let i=1;i<group.length;i++){
+      if(group[i].ly===undefined) group[i].ly=group[i].y;
+      const prev = group[i-1].ly ?? group[i-1].y;
+      group[i].ly = Math.max(group[i].y, prev+GAP);
+    }
+    group.forEach(g=>{ if(g.ly===undefined) g.ly=g.y; });
+    // keep the block inside the plot
+    const over = (group.length? group[group.length-1].ly : 0) - (M.t+ih-4);
+    if(over>0) group.forEach(g=>g.ly-=over);
+  });
+
+  heads.forEach(({p,x:hx2,y:hy2,ly})=>{
+    const col=qColor(p.quadrant);
+    const pts=p.tail.map(t=>`${X(t.x).toFixed(1)},${Y(t.y).toFixed(1)}`).join(' ');
+    const dots=p.tail.slice(0,-1).map((t,j)=>{
+      const r=1.3+2.0*(j/Math.max(1,p.tail.length-2));
+      return `<circle class="tail-dot" cx="${X(t.x).toFixed(1)}" cy="${Y(t.y).toFixed(1)}" r="${r.toFixed(1)}" fill="${col}"/>`;
+    }).join('');
+    const cls = 'series' + (state.hot===p.name?' hot':'') + (state.hot&&state.hot!==p.name?' dim':'');
+    const toLeft = hx2 > M.l+iw-96;
+    const lx = toLeft ? hx2-9 : hx2+9;
+    const anchor = toLeft ? 'end' : 'start';
+    // a leader line when the label had to be nudged away from its dot
+    const leader = Math.abs(ly-hy2) > 3
+      ? `<line x1="${hx2.toFixed(1)}" y1="${hy2.toFixed(1)}" x2="${lx.toFixed(1)}" y2="${(ly-3).toFixed(1)}" stroke="${col}" stroke-width="0.8" opacity=".38"/>` : '';
+    parts.push(
+      `<g class="${cls}" data-name="${p.name}">
+         <polyline class="tail-line" stroke="${col}" points="${pts}"/>
+         ${dots}${leader}
+         <circle class="head-ring" cx="${hx2.toFixed(1)}" cy="${hy2.toFixed(1)}" r="5.5" stroke="${col}"/>
+         <circle cx="${hx2.toFixed(1)}" cy="${hy2.toFixed(1)}" r="2.4" fill="${col}"/>
+         <text class="head-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}">${p.name}</text>
+         <circle cx="${hx2.toFixed(1)}" cy="${hy2.toFixed(1)}" r="15" fill="transparent"/>
+       </g>`);
+  });
+  svg.innerHTML = parts.join('');
+
+  // legend with live counts
+  const counts={};
+  d.points.forEach(p=>counts[p.quadrant]=(counts[p.quadrant]||0)+1);
+  document.getElementById('legend').innerHTML =
+    ['Leading','Weakening','Lagging','Improving'].map(q =>
+      `<span class="lg"><span class="sw" style="background:${qColor(q)}"></span>${q} <b>${counts[q]||0}</b></span>`
+    ).join('') +
+    `<span class="lg" style="border-style:dashed">Centre = ${d.benchmark}</span>`;
+
+  // table
+  document.getElementById('tbody').innerHTML = d.points.map(p=>`
+    <tr data-name="${p.name}" class="${state.hot===p.name?'hot':''}">
+      <td class="nm">${p.label||p.name}${p.tv?` <a class="tv" href="https://in.tradingview.com/chart/?symbol=${encodeURIComponent(p.tv)}" target="_blank" rel="noopener noreferrer" title="Open on TradingView">↗</a>`:''}</td>
+      <td><span class="chip" style="color:${qColor(p.quadrant)};border-color:${qColor(p.quadrant)}">
+            <span class="sw" style="background:${qColor(p.quadrant)}"></span>${p.quadrant}</span></td>
+      <td class="r num">${p.ratio.toFixed(2)}</td>
+      <td class="r num">${p.mom.toFixed(2)}</td>
+      <td class="r"><span class="hd">${bearing(p.heading)}</span></td>
+    </tr>`).join('');
+
+  document.getElementById('tblHint').textContent =
+    `${d.points.length} plotted${d.skipped.length?` · ${d.skipped.length} skipped`:''}`;
+  document.getElementById('chartHint').textContent =
+    `Tail = last ${d.tail} ${d.timeframe==='weekly'?'weeks':'days'} · newest dot is now`;
+  wireHover();
+}
+
+function niceStep(half){
+  const raw = half/2.2;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  return [1,2,2.5,5,10].map(m=>m*pow).find(s=>s>=raw) || pow*10;
+}
+const fmtAx = v => (Math.abs(v-Math.round(v))<0.05 ? v.toFixed(0) : v.toFixed(1));
+
+/* ---------------- interaction ---------------- */
+const tip=document.getElementById('tip');
+function showTip(p,e){
+  const last=p.tail[p.tail.length-1];
+  tip.innerHTML = `<b>${p.label||p.name}</b> · ${p.quadrant}<br>
+    <span class="t2">RS-Ratio ${p.ratio.toFixed(2)} · RS-Mom ${p.mom.toFixed(2)} · heading ${bearing(p.heading)}<br>
+    ${p.tail.length} periods to ${last.d}</span>`;
+  tip.style.left=e.clientX+'px'; tip.style.top=e.clientY+'px';
+  tip.classList.add('show');
+}
+function hideTip(){ tip.classList.remove('show'); }
+
+function wireHover(){
+  const byName={}; state.data.points.forEach(p=>byName[p.name]=p);
+  const set = n => { state.hot=n; render(); };
+  document.querySelectorAll('#rrg .series').forEach(g=>{
+    g.addEventListener('mousemove', e=>showTip(byName[g.dataset.name], e));
+    g.addEventListener('mouseenter', ()=>{ if(state.hot!==g.dataset.name) set(g.dataset.name); });
+    g.addEventListener('mouseleave', ()=>{ hideTip(); set(null); });
+    g.addEventListener('click', ()=>drill(g.dataset.name));
+  });
+  document.querySelectorAll('#tbody tr').forEach(tr=>{
+    tr.addEventListener('mouseenter', ()=>{ if(state.hot!==tr.dataset.name) set(tr.dataset.name); });
+    tr.addEventListener('mouseleave', ()=>set(null));
+    tr.addEventListener('click', e=>{ if(!e.target.closest('a')) drill(tr.dataset.name); });
+  });
+}
+
+function drill(name){
+  if(state.scope!=='sectors') return;            // already inside a sector
+  if(!state.data.sectors.includes(name)) return;
+  state.scope='sector'; state.sector=name; state.hot=null;
+  document.getElementById('scopeSel').value='sector:'+name;
+  load();
+}
+
+/* ---------------- controls ---------------- */
+function buildScopeSelect(sectors){
+  const sel=document.getElementById('scopeSel');
+  if(sel.dataset.built) return;
+  sel.innerHTML = `<option value="sectors">All sectors</option>` +
+    sectors.map(s=>`<option value="sector:${s}">${s} — constituents</option>`).join('');
+  sel.dataset.built='1';
+}
+document.getElementById('scopeSel').addEventListener('change', e=>{
+  const v=e.target.value;
+  if(v==='sectors'){ state.scope='sectors'; state.sector=null; }
+  else { state.scope='sector'; state.sector=v.slice(7); }
+  state.hot=null; load();
+});
+document.getElementById('tfSeg').addEventListener('click', e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  state.tf=b.dataset.tf;
+  document.querySelectorAll('#tfSeg button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  load();
+});
+document.getElementById('benchSeg').addEventListener('click', e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  state.bench=b.dataset.bench;
+  document.querySelectorAll('#benchSeg button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  load();
+});
+document.getElementById('tailSel').addEventListener('change', e=>{ state.tail=+e.target.value; load(); });
+document.getElementById('refreshBtn').addEventListener('click', ()=>load(true));
+
+/* ---------------- help ---------------- */
+const sheet=document.getElementById('sheet'), scrim=document.getElementById('scrim');
+let lastFocus=null;
+function openHelp(){
+  lastFocus=document.activeElement;
+  sheet.hidden=false; requestAnimationFrame(()=>{sheet.classList.add('open');scrim.classList.add('open');});
+  document.getElementById('closeHelp').focus();
+}
+function closeHelp(){
+  sheet.classList.remove('open'); scrim.classList.remove('open');
+  setTimeout(()=>{sheet.hidden=true;},200);
+  if(lastFocus) lastFocus.focus();
+}
+document.getElementById('helpBtn').addEventListener('click',openHelp);
+document.getElementById('closeHelp').addEventListener('click',closeHelp);
+scrim.addEventListener('click',closeHelp);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!sheet.hidden) closeHelp(); });
+
+/* ---------------- data ---------------- */
+async function load(force){
+  if(state.fetching) return;
+  state.fetching=true;
+  const btn=document.getElementById('refreshBtn');
+  btn.textContent='Loading…'; btn.disabled=true;
+  const st=document.getElementById('status');
+  st.classList.remove('err'); st.textContent='Loading…';
+  const q=new URLSearchParams({scope:state.scope, tf:state.tf, tail:state.tail, bench:state.bench});
+  if(state.sector) q.set('name', state.sector);
+  if(force) q.set('_', Date.now());
+  try{
+    const r=await fetch('/api/rrg.json?'+q, {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    if(d.error) throw new Error(d.error);
+    state.data=d;
+    buildScopeSelect(d.sectors||[]);
+    document.getElementById('benchSeg').hidden = d.scope!=='sector';
+    document.getElementById('title').textContent =
+      d.scope==='sector' ? `${d.sector} — constituent rotation` : 'Sector Rotation';
+    document.getElementById('lede').textContent = d.scope==='sector'
+      ? `Each stock in ${d.sector} plotted against ${d.benchmark}. Right of centre is relatively strong; above centre that strength is improving.`
+      : 'Where each sector sits against the benchmark, and which way it is heading. Right of centre is relatively strong; above centre that strength is improving.';
+    document.getElementById('chartTitle').textContent =
+      (d.scope==='sector'? d.sector+' constituents' : 'NSE sector indices') + ' vs ' + d.benchmark;
+    document.getElementById('mBench').textContent=d.benchmark;
+    document.getElementById('mSmooth').textContent=d.smoothing+' ('+d.timeframe+')';
+    document.getElementById('mAsOf').textContent=d.as_of||'—';
+    st.textContent = `${d.points.length} plotted`;
+    document.getElementById('footer').textContent =
+      d.method + '  ' + d.source + (d.skipped.length? '  Skipped (too little history): '+d.skipped.join(', ') : '');
+    render();
+  }catch(e){
+    st.textContent='Could not load: '+e.message+' — is app.py running?';
+    st.classList.add('err');
+  }finally{
+    state.fetching=false; btn.textContent='Refresh'; btn.disabled=false;
+  }
+}
+load();
+</script>
+</body>
+</html>

@@ -39,11 +39,14 @@ import http.cookiejar
 import http.server
 import socketserver
 import webbrowser
+import rrg
 from universe import (SECTORS, YAHOO_INDEX, NSE_INDEX, NSE_CONSTITUENT_INDEX,
                       TRADINGVIEW_INDEX, ALL_STOCKS, yahoo_stock, tradingview_symbol)
 
 PORT = 8765
 HTML_FILE = "Sector_Performance_Board.html"
+RRG_FILE = "RRG.html"
+BENCHMARK = ("^NSEI", "NIFTY 50")     # RRG benchmark
 SPARK_URL = "https://query2.finance.yahoo.com/v7/finance/spark"
 BATCH_SIZE = 20           # symbols per request; 30+ returns HTTP 400
 RANGE = "3mo"             # enough bars to derive weekly and monthly references
@@ -490,6 +493,54 @@ def build_payload():
 
 
 # ---------------------------------------------------------------------------
+# RRG
+# ---------------------------------------------------------------------------
+def build_rrg(scope="sectors", name=None, timeframe="weekly", tail=rrg.DEFAULT_TAIL,
+              bench="nifty"):
+    """
+    scope="sectors"  -> the 11 sector indices vs NIFTY 50
+    scope="sector"   -> one sector's constituents, vs NIFTY 50 or vs their own index
+    """
+    timeframe = "daily" if timeframe == "daily" else "weekly"
+
+    if scope == "sector" and name in SECTORS:
+        # authoritative membership when NSE is reachable, hardcoded list otherwise
+        syms = None
+        try:
+            rows = fetch_nse_constituents(_nse_opener(), NSE_CONSTITUENT_INDEX[name])
+            syms = [r["symbol"] for r in rows] or None
+        except Exception as e:
+            print(f"  ! RRG: live membership failed for {name} ({str(e)[:40]}) - using fallback")
+        syms = syms or SECTORS[name]
+        members = [{"name": x, "symbol": yahoo_stock(x), "label": x,
+                    "tv": tradingview_symbol(x)} for x in syms]
+        members = [m for m in members if m["symbol"]]
+        if bench == "sector":
+            bench_sym, bench_label = YAHOO_INDEX[name], NSE_INDEX[name]
+        else:
+            bench_sym, bench_label = BENCHMARK
+        title = name
+    else:
+        scope, name = "sectors", None
+        members = [{"name": s_, "symbol": YAHOO_INDEX[s_], "label": NSE_INDEX[s_],
+                    "tv": TRADINGVIEW_INDEX[s_]} for s_ in SECTORS]
+        bench_sym, bench_label = BENCHMARK
+        title = "NSE sectors"
+
+    started = dt.datetime.now()
+    print(f"[{started:%H:%M:%S}] RRG {scope}"
+          f"{'/' + name if name else ''} {timeframe} vs {bench_label}...")
+    out = rrg.build(_get_json, members, bench_sym, bench_label, timeframe, tail)
+    out["scope"] = scope
+    out["sector"] = name
+    out["title"] = title
+    out["sectors"] = list(SECTORS)
+    print(f"  {len(out['points'])} plotted, {len(out['skipped'])} skipped, "
+          f"{(dt.datetime.now() - started).total_seconds():.1f}s")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -498,6 +549,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if path in ("/", "/index.html"):
             return self._send_file(HTML_FILE, "text/html; charset=utf-8")
+
+        if path in ("/rrg", "/rrg.html"):
+            return self._send_file(RRG_FILE, "text/html; charset=utf-8")
+
+        if path == "/api/rrg.json":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            one = lambda k, d=None: (q.get(k) or [d])[0]
+            key = (one("scope", "sectors"), one("name"), one("tf", "weekly"),
+                   one("tail", str(rrg.DEFAULT_TAIL)), one("bench", "nifty"))
+            try:
+                body = json.dumps(rrg.cached_build(key, lambda: build_rrg(
+                    scope=key[0], name=key[1], timeframe=key[2],
+                    tail=key[3], bench=key[4]))).encode()
+            except Exception as e:
+                print("  ! RRG failed:", e)
+                return self._send_json({"error": str(e)}, code=502)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
 
         if path in ("/api/live_data.json", "/live_data.json"):
             try:

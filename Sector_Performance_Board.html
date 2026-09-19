@@ -65,6 +65,13 @@
   .num{font-variant-numeric:tabular-nums;}
   .app{max-width:1160px;margin:0 auto;padding:32px 16px 72px;}
 
+  nav.tabs{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);
+           border-radius:var(--radius-sm);padding:2px;margin-bottom:16px;}
+  nav.tabs a{text-decoration:none;color:var(--ink-2);font-size:13px;font-weight:500;
+             padding:6px 14px;border-radius:6px;transition:background .12s,color .12s;}
+  nav.tabs a:hover{color:var(--ink);}
+  nav.tabs a[aria-current="page"]{background:var(--surface);color:var(--ink);font-weight:600;}
+
   /* ============================================================
      HEADER
      ============================================================ */
@@ -281,6 +288,11 @@
 </head>
 <body>
 <div class="app">
+
+  <nav class="tabs">
+    <a href="/" aria-current="page">Performance board</a>
+    <a href="/rrg">Rotation (RRG)</a>
+  </nav>
 
   <header>
     <div>

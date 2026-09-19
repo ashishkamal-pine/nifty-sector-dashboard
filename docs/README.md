@@ -12,6 +12,12 @@ python app.py
 Opens <http://localhost:8765> and **loads live NSE data automatically**. Hit
 **Refresh** for a fresh pull, or turn on **Auto-refresh** to update every 30 seconds.
 
+Two pages, linked by the tabs at the top:
+
+- **`/`** — the performance board: sector cards, drill-downs, sparklines
+- **`/rrg`** — the [Relative Rotation Graph](rrg.md): where each sector sits against
+  NIFTY 50 and which way it is rotating
+
 **Requirements:** Python 3.7+. That is the whole list — no `pip install`, no API key,
 no login, no token.
 
@@ -19,7 +25,8 @@ no login, no token.
 
 | Piece | File | Role |
 |---|---|---|
-| Web dashboard | `Sector_Performance_Board.html` | The UI. A pure view over what `app.py` serves |
+| Web dashboard | `Sector_Performance_Board.html` | The performance board |
+| Rotation graph | `RRG.html` + `rrg.py` | Relative Rotation Graph at `/rrg` |
 | Server + fetcher | `app.py` | Serves the page and pulls live data on request |
 | Sector universe | `universe.py` | Single source of truth: sectors, stocks, index names |
 
@@ -37,6 +44,7 @@ Data comes from two free, key-less sources, with NSE authoritative:
 | Doc | Covers |
 |---|---|
 | [app.md](app.md) | `app.py` — how the fetching works, endpoints, symbol handling |
+| [rrg.md](rrg.md) | The Relative Rotation Graph: the maths, the data, how to read it |
 | [architecture.md](architecture.md) | End-to-end data flow and why it is shaped this way |
 | [data-model.md](data-model.md) | The universe, shared row schema, every file format |
 | [web-dashboard.md](web-dashboard.md) | The HTML: UI, state, rendering |
