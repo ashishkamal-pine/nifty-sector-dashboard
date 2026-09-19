@@ -113,6 +113,7 @@ disk — this exists only in the HTTP response.
 | `note` | Human-readable summary of the above |
 | `approxWM` | Per sector: `true` if weekly/monthly is a constituent average |
 | `spark` | `{d, w, m}` — three 32-point close series for the sparklines (Yahoo) |
+| `tv` | TradingView symbol for the chart deep link (`NSE:TCS`, `NSE:CNXMETAL`) |
 
 All floats are rounded to 2dp. The dashboard validates only that `sectors` and
 `constituents` exist.

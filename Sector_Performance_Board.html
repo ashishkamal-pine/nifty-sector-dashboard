@@ -176,6 +176,22 @@
   .up .pct{color:var(--up);} .down .pct{color:var(--down);}
   .flat .pct{color:var(--ink-2);}
 
+  /* TradingView deep links */
+  .tv{
+    display:inline-flex;align-items:center;gap:3px;
+    color:var(--ink-3);text-decoration:none;font-size:11px;font-weight:600;
+    border:1px solid transparent;border-radius:6px;padding:2px 5px;margin:-2px -5px;
+    transition:color .12s ease,border-color .12s ease,background .12s ease;
+  }
+  .tv:hover{color:var(--ink);border-color:var(--border);background:var(--surface-2);}
+  .tv:focus-visible{outline:2px solid var(--ink);outline-offset:1px;}
+  .tv .ext{font-size:10px;opacity:.8;}
+  .card .tv-corner{position:absolute;top:11px;right:34px;opacity:0;transition:opacity .12s ease;}
+  .card:hover .tv-corner,.card:focus-within .tv-corner{opacity:1;}
+  td .tv{font-size:inherit;font-weight:600;color:var(--ink);}
+  td .tv:hover{color:var(--ink);text-decoration:underline;}
+  .dd-head .tv{font-size:13px;}
+
   /* ============================================================
      SPARKLINE
      ============================================================ */
@@ -358,6 +374,15 @@ let state = { timeframe:'daily', sectors:[], constituents:[], selectedSector:nul
 
 const fieldForTf = (tf) => tf === 'weekly' ? 'prevW' : tf === 'monthly' ? 'prevM' : 'prevD';
 const sparkKey   = (tf) => tf === 'weekly' ? 'w'     : tf === 'monthly' ? 'm'     : 'd';
+const TV_BASE = 'https://in.tradingview.com/chart/?symbol=';
+const tvUrl = (tv) => TV_BASE + encodeURIComponent(tv);
+// `tv` is supplied by the server (universe.py) so symbol mapping lives in one place.
+function tvLink(tv, label, cls){
+  if(!tv) return label;
+  return `<a class="tv ${cls||''}" href="${tvUrl(tv)}" target="_blank" rel="noopener noreferrer"
+     title="Open ${tv} on TradingView">${label}<span class="ext">↗</span></a>`;
+}
+
 const tfLabel    = (tf) => tf.charAt(0).toUpperCase() + tf.slice(1);
 
 function pctChange(row, tf){
@@ -465,7 +490,8 @@ function renderGrid(){
   }
   grid.innerHTML = list.map((s,i) => {
     const d = dirOf(s.pct);
-    return `<button class="card ${d}" data-sector="${s.sector}">
+    return `<div class="card ${d}" data-sector="${s.sector}" role="button" tabindex="0"
+                 aria-label="${s.sector}, ${fmtPct(s.pct)}. Show constituents.">
       <div class="card-top">
         <div>
           <div class="name">${s.sector}</div>
@@ -473,12 +499,22 @@ function renderGrid(){
         </div>
         <div class="rank num">${i+1}</div>
       </div>
+      ${tvLink(s.tv, 'Chart', 'tv-corner')}
       <div class="pct num"><span class="arrow">${arrowOf(d)}</span>${fmtPct(s.pct)}</div>
       ${sparkFor(s)}
-    </button>`;
+    </div>`;
   }).join('');
-  grid.querySelectorAll('.card').forEach(c =>
-    c.addEventListener('click', () => openDrilldown(c.dataset.sector)));
+  grid.querySelectorAll('.card').forEach(c => {
+    c.addEventListener('click', e => {
+      if(e.target.closest('a')) return;          // let the TradingView link through
+      openDrilldown(c.dataset.sector);
+    });
+    c.addEventListener('keydown', e => {
+      if((e.key === 'Enter' || e.key === ' ') && !e.target.closest('a')){
+        e.preventDefault(); openDrilldown(c.dataset.sector);
+      }
+    });
+  });
 }
 
 function renderDrilldown(){
@@ -487,8 +523,9 @@ function renderDrilldown(){
   const list = rankedConstituents(name);
   const d    = dirOf(row && pctChange(row, state.timeframe));
   document.getElementById('ddTitle').textContent = name;
-  document.getElementById('ddSub').textContent =
-    (row ? row.indexSymbol + ' · ' : '') + tfLabel(state.timeframe) + ' change · ' + list.length + ' constituents';
+  document.getElementById('ddSub').innerHTML =
+    (row ? tvLink(row.tv, row.indexSymbol) + ' · ' : '') +
+    tfLabel(state.timeframe) + ' change · ' + list.length + ' constituents';
 
   const up = list.filter(c => (c.pct ?? 0) > 0).length;
   document.getElementById('ddSummary').innerHTML =
@@ -501,7 +538,7 @@ function renderDrilldown(){
     const cd = dirOf(c.pct);
     return `<tr class="${cd}">
       <td class="num" style="color:var(--ink-3)">${i+1}</td>
-      <td class="sym">${c.symbol}</td>
+      <td class="sym">${tvLink(c.tv, c.symbol)}</td>
       <td class="r num">${fmtPrice(c.ltp)}</td>
       <td class="col-trend">${sparkFor(c)}</td>
       <td class="r chg num">${arrowOf(cd)} ${fmtPct(c.pct)}</td>

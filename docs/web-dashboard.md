@@ -155,6 +155,35 @@ the tile width.
 come from NSE.** The shape is right; the absolute levels can differ slightly from NSE's
 official figure.
 
+## TradingView links
+
+Every symbol deep-links to its TradingView chart:
+
+- **Sector card** — a `Chart ↗` link appears in the corner on hover; the card itself
+  still opens the drill-down
+- **Drill-down header** — the index name links to the index chart
+- **Drill-down table** — every stock symbol is a link
+
+These are plain `https://in.tradingview.com/chart/?symbol=NSE:XXX` URLs opened in a new
+tab. **No API, no key, nothing is fetched from TradingView** — it is only a link.
+
+The symbol comes from the payload's `tv` field, so the mapping lives in `universe.py`
+rather than being reconstructed in the browser. All 12 index symbols and all 171 stock
+tickers were verified against TradingView's own symbol search (2026-09-19).
+
+Two mappings are not the obvious guess:
+
+| | NSE | TradingView |
+|---|---|---|
+| Bank index | NIFTY BANK | `BANKNIFTY` (not `CNXBANK`) |
+| Bajaj Auto | `BAJAJ-AUTO` | `BAJAJ_AUTO` (underscore) |
+
+`M&M` and `GVT&D` pass through unchanged — ampersands are fine.
+
+Because a link cannot legally nest inside a `<button>`, the sector card is a
+`div[role=button][tabindex=0]` with click and Enter/Space handlers; the click handler
+ignores events originating inside an `<a>` so the chart link does not also drill down.
+
 ## Freshness
 
 `renderStamp()` reads `generated_at` from the payload and shows the data's age

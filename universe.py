@@ -83,6 +83,34 @@ NSE_CONSTITUENT_INDEX = {
 # SECTORS above is now only a FALLBACK used when NSE's constituent endpoint is
 # unreachable. NSE is authoritative for membership at runtime.
 
+# TradingView chart symbols. Clicking a row deep-links to
+# https://in.tradingview.com/chart/?symbol=<this>
+# No API and no key involved - it is only a URL. All 12 verified against
+# TradingView's own symbol search on 2026-09-19 (171/171 stocks, 11/11 indices).
+TRADINGVIEW_INDEX = {
+    "Bank":        "NSE:BANKNIFTY",
+    "IT":          "NSE:CNXIT",
+    "Auto":        "NSE:CNXAUTO",
+    "Pharma":      "NSE:CNXPHARMA",
+    "FMCG":        "NSE:CNXFMCG",
+    "Metal":       "NSE:CNXMETAL",
+    "Energy":      "NSE:CNXENERGY",
+    "Realty":      "NSE:CNXREALTY",
+    "Media":       "NSE:CNXMEDIA",
+    "PSU Bank":    "NSE:CNXPSUBANK",
+    "Fin Service": "NSE:CNXFINANCE",   # the full index, not the 25/50 variant
+}
+
+# NSE ticker -> TradingView ticker, where they differ. Ampersands pass through
+# unchanged (M&M, GVT&D both resolve); only the hyphen needs remapping.
+TRADINGVIEW_OVERRIDES = {"BAJAJ-AUTO": "BAJAJ_AUTO"}
+
+
+def tradingview_symbol(sym):
+    """Bare NSE stock symbol -> fully qualified TradingView symbol."""
+    return "NSE:" + TRADINGVIEW_OVERRIDES.get(sym, sym)
+
+
 # Symbols where the NSE ticker above no longer maps 1:1 to a Yahoo listing.
 # Value None = Yahoo has no listing; the stock is skipped deliberately, not lost
 # silently. Checked 2026-09-17 against Yahoo's symbol search.

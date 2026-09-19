@@ -58,7 +58,10 @@ The familiar shape plus three provenance fields:
 }
 ```
 
-Each sector and constituent row also carries `spark: {d, w, m}` — see below.
+Each sector and constituent row also carries `spark: {d, w, m}` (see below) and `tv`,
+the TradingView symbol used for the chart deep links — e.g. `NSE:CNXMETAL`, `NSE:TCS`.
+That mapping lives in `universe.py` (`TRADINGVIEW_INDEX`, `tradingview_symbol()`) so the
+browser never reconstructs a ticker.
 
 `generated_at` is when the **data** was fetched, not when the browser drew it — the
 header shows its age ("2s ago"), so a stale board is now visible as stale. That closes

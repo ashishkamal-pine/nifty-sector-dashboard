@@ -40,7 +40,7 @@ import http.server
 import socketserver
 import webbrowser
 from universe import (SECTORS, YAHOO_INDEX, NSE_INDEX, NSE_CONSTITUENT_INDEX,
-                      ALL_STOCKS, yahoo_stock)
+                      TRADINGVIEW_INDEX, ALL_STOCKS, yahoo_stock, tradingview_symbol)
 
 PORT = 8765
 HTML_FILE = "Sector_Performance_Board.html"
@@ -460,8 +460,10 @@ def build_payload():
     sparks = fetch_sparks(sorted({w for w in want if w}))
     for r in sectors:
         r["spark"] = sparks.get(YAHOO_INDEX[r["sector"]], {})
+        r["tv"] = TRADINGVIEW_INDEX.get(r["sector"])
     for c in constituents:
         c["spark"] = sparks.get(yahoo_stock(c["symbol"]) or "", {})
+        c["tv"] = tradingview_symbol(c["symbol"])
     with_spark = sum(1 for x in sectors + constituents if x["spark"].get("d"))
     print(f"  sparklines: {with_spark}/{len(sectors) + len(constituents)} rows")
 
