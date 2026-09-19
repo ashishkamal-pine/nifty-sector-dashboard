@@ -84,6 +84,12 @@
   .icon-btn{padding:7px 10px;}
   select.btn{padding-right:26px;}
 
+  .back{background:none;border:none;color:var(--ink-2);font:inherit;font-size:13px;
+        cursor:pointer;padding:0 0 6px;display:inline-flex;align-items:center;gap:6px;}
+  .back:hover{color:var(--ink);}
+  .warn{border:1px solid var(--border);border-left:3px solid var(--q-weak);
+        background:var(--surface);border-radius:var(--radius-sm);
+        padding:9px 13px;font-size:12.5px;color:var(--ink-2);margin-bottom:14px;}
   .meta{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;
         font-size:12px;color:var(--ink-3);margin-bottom:18px;}
   .meta b{color:var(--ink-2);font-weight:600;}
@@ -136,6 +142,7 @@
   tbody td{padding:7px 12px;border-bottom:1px solid var(--line);white-space:nowrap;}
   tbody tr:last-child td{border-bottom:none;}
   tbody tr{cursor:pointer;}
+  tbody tr:focus-visible{outline:2px solid var(--ink);outline-offset:-2px;}
   tbody tr:hover td,tbody tr.hot td{background:var(--surface-2);}
   .chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:650;
         border-radius:999px;padding:2px 8px;border:1px solid transparent;}
@@ -202,6 +209,7 @@
 
   <header>
     <div>
+      <button class="back" id="backBtn" hidden>← All sectors</button>
       <div class="eyebrow">NSE · Relative Rotation</div>
       <h1 id="title">Sector Rotation</h1>
       <div class="sub" id="lede">
@@ -230,6 +238,8 @@
       <button class="btn icon-btn" id="themeBtn" aria-label="Switch theme">☾</button>
     </div>
   </header>
+
+  <div class="warn" id="partial" hidden></div>
 
   <div class="meta">
     <span id="status">Loading…</span>
@@ -584,10 +594,23 @@ function wireHover(){
     g.addEventListener('mouseleave', ()=>{ hideTip(); set(null); });
     g.addEventListener('click', ()=>drill(g.dataset.name));
   });
+  const canDrill = state.scope==='sectors';
   document.querySelectorAll('#tbody tr').forEach(tr=>{
     tr.addEventListener('mouseenter', ()=>{ if(state.hot!==tr.dataset.name) set(tr.dataset.name); });
     tr.addEventListener('mouseleave', ()=>set(null));
     tr.addEventListener('click', e=>{ if(!e.target.closest('a')) drill(tr.dataset.name); });
+    if(canDrill){
+      tr.tabIndex = 0;
+      tr.setAttribute('role','button');
+      tr.setAttribute('aria-label', tr.dataset.name + ' — show constituents');
+      tr.addEventListener('focus', ()=>set(tr.dataset.name));
+      tr.addEventListener('blur',  ()=>set(null));
+      tr.addEventListener('keydown', e=>{
+        if((e.key==='Enter'||e.key===' ') && !e.target.closest('a')){
+          e.preventDefault(); drill(tr.dataset.name);
+        }
+      });
+    }
   });
 }
 
@@ -627,6 +650,11 @@ document.getElementById('benchSeg').addEventListener('click', e=>{
 });
 document.getElementById('tailSel').addEventListener('change', e=>{ state.tail=+e.target.value; load(); });
 document.getElementById('refreshBtn').addEventListener('click', ()=>load(true));
+document.getElementById('backBtn').addEventListener('click', ()=>{
+  state.scope='sectors'; state.sector=null; state.hot=null;
+  document.getElementById('scopeSel').value='sectors';
+  load();
+});
 
 /* ---------------- help ---------------- */
 const sheet=document.getElementById('sheet'), scrim=document.getElementById('scrim');
@@ -656,7 +684,7 @@ async function load(force){
   st.classList.remove('err'); st.textContent='Loading…';
   const q=new URLSearchParams({scope:state.scope, tf:state.tf, tail:state.tail, bench:state.bench});
   if(state.sector) q.set('name', state.sector);
-  if(force) q.set('_', Date.now());
+  if(force) q.set('force','1');
   try{
     const r=await fetch('/api/rrg.json?'+q, {cache:'no-store'});
     if(!r.ok) throw new Error('HTTP '+r.status);
@@ -675,6 +703,21 @@ async function load(force){
     document.getElementById('mBench').textContent=d.benchmark;
     document.getElementById('mSmooth').textContent=d.smoothing+' ('+d.timeframe+')';
     document.getElementById('mAsOf').textContent=d.as_of||'—';
+    // A weekly point dated before Friday means this week has not closed yet, so the
+    // newest dot will keep moving until it does. Worth saying rather than hiding.
+    const pw=document.getElementById('partial');
+    let partial=false;
+    if(d.as_of){
+      const dt_=new Date(d.as_of+'T00:00:00'), dow=dt_.getDay();
+      partial = d.timeframe==='weekly' ? dow!==5 : false;
+      if(partial){
+        pw.textContent = `The latest ${d.timeframe} point is dated ${d.as_of} (${
+          ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dow]
+        }), so the current week has not closed yet — the newest dot will keep moving until it does.`;
+      }
+    }
+    pw.hidden = !partial;
+    document.getElementById('backBtn').hidden = d.scope!=='sector';
     st.textContent = `${d.points.length} plotted`;
     document.getElementById('footer').textContent =
       d.method + '  ' + d.source + (d.skipped.length? '  Skipped (too little history): '+d.skipped.join(', ') : '');

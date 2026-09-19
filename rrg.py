@@ -203,7 +203,11 @@ def build(get_json, members, bench_symbol, bench_label,
     bench_symbol yahoo symbol of the benchmark
     -> payload dict
     """
-    tail = max(2, min(int(tail or DEFAULT_TAIL), MAX_TAIL))
+    try:
+        tail = int(tail)
+    except (TypeError, ValueError):
+        tail = DEFAULT_TAIL
+    tail = max(2, min(tail, MAX_TAIL))
     n = SMOOTHING.get(timeframe, 10)
 
     wanted = [m["symbol"] for m in members] + [bench_symbol]
@@ -250,6 +254,10 @@ def build(get_json, members, bench_symbol, bench_label,
         "skipped": skipped,
         "points": points,
     }
+
+
+def put_cache(key, value):
+    _cache[key] = (time.time(), value)
 
 
 def cached_build(key, fn):

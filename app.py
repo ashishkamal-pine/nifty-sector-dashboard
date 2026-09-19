@@ -558,10 +558,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             one = lambda k, d=None: (q.get(k) or [d])[0]
             key = (one("scope", "sectors"), one("name"), one("tf", "weekly"),
                    one("tail", str(rrg.DEFAULT_TAIL)), one("bench", "nifty"))
+            fresh = one("force") in ("1", "true", "yes")
             try:
-                body = json.dumps(rrg.cached_build(key, lambda: build_rrg(
-                    scope=key[0], name=key[1], timeframe=key[2],
-                    tail=key[3], bench=key[4]))).encode()
+                make = lambda: build_rrg(scope=key[0], name=key[1], timeframe=key[2],
+                                         tail=key[3], bench=key[4])
+                payload = make() if fresh else rrg.cached_build(key, make)
+                if fresh:
+                    rrg.put_cache(key, payload)     # keep the warm copy in step
+                body = json.dumps(payload).encode()
             except Exception as e:
                 print("  ! RRG failed:", e)
                 return self._send_json({"error": str(e)}, code=502)

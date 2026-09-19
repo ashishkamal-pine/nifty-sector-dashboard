@@ -131,6 +131,11 @@ GET /api/rrg.json?scope=sectors|sector&name=<sector>&tf=weekly|daily&tail=N&benc
 | `ema()` vs hand-computed reference | exact |
 | Hourly→daily resampling vs real daily bars | median 0.05%, max 0.7% |
 | RS-Ratio ranking vs actual 6-month relative performance | **Spearman ρ = 0.86** |
+| Benchmark plotted against itself | exactly **100.000000 / 100.000000** |
+| EMA seeding bias (full vs half history) | converged, Δ ≤ 0.003 |
+| ISO-week grouping across a year boundary | correct |
+| All sectors' tails on identical dates | yes |
+| Chart, table, legend vs the payload | 0 mismatches |
 
 The rank correlation is strongly positive but not 1.0, which is correct — RS-Ratio is a
 smoothed *trend* measure over a different window, not a point-to-point return.
@@ -157,3 +162,5 @@ sector's own constituents are doing.
 - **Resampled closes** are a few minutes early versus the official close.
 - **Labels crowd** when many names cluster near the centre. They are nudged apart
   vertically with leader lines, and hovering dims everything else.
+- **Mid-week, the newest weekly point is a partial week** and will keep moving until
+  Friday's close. The page says so with a banner when the latest point is not a Friday.
