@@ -155,8 +155,7 @@
   .tv{color:var(--ink-3);text-decoration:none;font-size:11px;font-weight:600;}
   .tv:hover{color:var(--ink);text-decoration:underline;}
 
-  #tip{position:fixed;z-index:60;pointer-events:none;opacity:0;
-       transform:translate(-50%,calc(-100% - 15px));
+  #tip{position:fixed;z-index:60;pointer-events:none;opacity:0;left:0;top:0;
        background:#1c1c1b;color:#fff;border-radius:9px;padding:11px 14px;
        white-space:nowrap;transition:opacity .1s;box-shadow:0 6px 24px rgba(0,0,0,.35);}
   :root[data-theme="dark"] #tip{background:#000;border:1px solid rgba(255,255,255,.14);}
@@ -509,14 +508,15 @@ function render(){
     const h=p.tail[p.tail.length-1];
     return {p, x:X(h.x), y:Y(h.y)};
   });
+  // Labels are placed naively here and pruned after insertion, once their real
+  // widths can be measured. Estimating width from character count was hopeless:
+  // measured per-character width ranges 5.3px to 8.1px depending on the letters.
   const right = heads.filter(h=>h.x <= M.l+iw-96).sort((a,b)=>a.y-b.y);
   const left  = heads.filter(h=>h.x >  M.l+iw-96).sort((a,b)=>a.y-b.y);
   [right,left].forEach(group=>{
     const GAP=13;
     group.forEach(g=>{ g.ly=g.y+3.8; });
-    for(let i=1;i<group.length;i++){
-      group[i].ly = Math.max(group[i].ly, group[i-1].ly+GAP);
-    }
+    for(let i=1;i<group.length;i++) group[i].ly = Math.max(group[i].ly, group[i-1].ly+GAP);
     const over = (group.length? group[group.length-1].ly : 0) - (M.t+ih-4);
     if(over>0) group.forEach(g=>g.ly-=over);
   });
@@ -551,6 +551,7 @@ function render(){
        </g>`);
   });
   svg.innerHTML = parts.join('');
+  pruneLabels(svg, d);
   // A static label tells a screen-reader user nothing. Summarise the plot, and point
   // at the table, which is the real text alternative.
   const byQ={};
@@ -583,8 +584,11 @@ function render(){
 
   document.getElementById('tblHint').textContent =
     `${d.points.length} plotted${d.skipped.length?` · ${d.skipped.length} skipped`:''}`;
+  const unlabelled = +(svg.dataset.hiddenLabels||0);
   document.getElementById('chartHint').textContent =
-    `Tail = last ${d.tail} ${d.timeframe==='weekly'?'weeks':'days'} · newest dot is now`;
+    `Tail = last ${d.tail} ${d.timeframe==='weekly'?'weeks':'days'} · ` +
+    (unlabelled ? `${unlabelled} unlabelled — hover any dot for its name and tail`
+                : 'hover a dot for its tail');
   wireHover();
   // render() rebuilds the SVG, so the card has to be re-anchored to the new node
   if(state.hot){
@@ -594,6 +598,32 @@ function render(){
   }else{
     hideTip();
   }
+}
+
+// Hide any label that would overlap one already kept. Runs after insertion so it can
+// use getBBox(), i.e. the label's real geometry rather than a guess. Points furthest
+// from the centre are offered a label first - those are the ones worth naming - and the
+// hovered point always keeps its own.
+function pruneLabels(svg, d){
+  const byName={}; d.points.forEach(p=>byName[p.name]=p);
+  const nodes=[...svg.querySelectorAll('.head-label')];
+  const scored=nodes.map(n=>{
+    const p=byName[n.closest('.series').dataset.name];
+    return {n, p, score: Math.hypot(p.ratio-100, (p.mom-100)*2)};
+  }).sort((a,b)=>b.score-a.score);
+
+  const kept=[]; let hidden=0;
+  for(const {n,p} of scored){
+    n.style.display='';
+    let box;
+    try{ box=n.getBBox(); }catch(e){ continue; }
+    const pad=1.5;
+    const r={x:box.x-pad, y:box.y-pad, w:box.width+2*pad, h:box.height+2*pad};
+    const clash = kept.some(q=>r.x<q.x+q.w && q.x<r.x+r.w && r.y<q.y+q.h && q.y<r.y+r.h);
+    if(clash && p.name!==state.hot){ n.style.display='none'; hidden++; }
+    else kept.push(r);
+  }
+  svg.dataset.hiddenLabels=hidden;
 }
 
 function niceStep(half){
@@ -613,11 +643,19 @@ function showTip(p, anchorEl){
     `<div class="tr"><span>RS-Momentum</span><b>${p.mom.toFixed(1)}</b></div>` +
     `<div class="tq" style="color:${qColor(p.quadrant)}">${p.quadrant}</div>` +
     `<div class="tm">heading ${bearing(p.heading)} · ${p.tail.length} periods to ${last.d}</div>`;
-  // anchored to the dot, so the card does not jitter with the pointer
-  const r = anchorEl.getBoundingClientRect();
-  tip.style.left = (r.left + r.width/2) + 'px';
-  tip.style.top  = (r.top + r.height/2) + 'px';
+  // Anchored to the dot so the card does not jitter with the pointer, then kept
+  // inside the viewport: sitting it blindly above the dot put it off-screen for
+  // most sectors once the page was scrolled at all.
   tip.classList.add('show');
+  const r = anchorEl.getBoundingClientRect();
+  const w = tip.offsetWidth, h = tip.offsetHeight, GAP = 14, EDGE = 8;
+  let top = r.top - h - GAP;                       // preferred: above the dot
+  if (top < EDGE) top = r.bottom + GAP;            // no room? flip below it
+  top = Math.max(EDGE, Math.min(top, innerHeight - h - EDGE));
+  let left = r.left + r.width/2 - w/2;
+  left = Math.max(EDGE, Math.min(left, innerWidth - w - EDGE));
+  tip.style.left = left + 'px';
+  tip.style.top  = top + 'px';
 }
 function hideTip(){ tip.classList.remove('show'); }
 

@@ -154,6 +154,14 @@ reveals that series' tail, dims everything else, and shows a card with its RS-Ra
 RS-Momentum, quadrant and heading. The card is anchored to the dot rather than the
 cursor so it does not jitter.
 
+**Labels are pruned by measurement, not by guesswork.** Every label is drawn, then its
+real `getBBox()` is compared against the ones already kept; anything that would overlap
+is hidden. Points furthest from the centre get first refusal, since those are the ones
+worth naming, and the hovered point always keeps its label. Estimating label width from
+character count was hopeless — measured per-character width ranges 5.3px to 8.1px
+depending on the letters — and left 21 overlapping pairs on a 40-stock sector. The
+header says how many are unlabelled.
+
 There are no gridlines or tick numbers: the quadrant fills already say which side of 100
 a dot is on, and the exact values are in the card and the table.
 
@@ -188,8 +196,8 @@ sector's own constituents are doing.
 - **Daily mode is noisy**, as the reference document warns; weekly is the default for a
   reason.
 - **Resampled closes** are a few minutes early versus the official close.
-- **Labels crowd** when many names cluster near the centre. They are nudged apart
-  vertically with leader lines, and hovering dims everything else.
+- **Dense clusters go unlabelled** rather than overlapping. The count is shown in the
+  chart header and every dot still names itself on hover.
 - **A long tail can be clipped** at the plot edge, because the axes are scaled to the
   dots. The trimmed part is always the oldest end.
 - **Mid-week, the newest weekly point is a partial week** and will keep moving until
