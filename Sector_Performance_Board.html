@@ -702,7 +702,8 @@ async function loadLive(force){
       if(state.meta) state.meta.weekly_missing = d.weekly_missing;
       stage.constituents='done';
       rerender(); setStageNote();
-    }).catch(e=>{ stage.constituents='error'; setStageNote();
+    }).catch(e=>{ if(!current()) return;          // a newer load already succeeded
+      stage.constituents='error'; setStageNote();
       console.warn('constituents failed', e.message); }),
 
     getJSON('/api/sparks.json', force).then(d=>{
@@ -710,7 +711,8 @@ async function loadLive(force){
       mergeSparks(d);
       stage.sparks='done';
       rerender(); setStageNote();
-    }).catch(e=>{ stage.sparks='error'; setStageNote();
+    }).catch(e=>{ if(!current()) return;          // a newer load already succeeded
+      stage.sparks='error'; setStageNote();
       console.warn('sparks failed', e.message); }),
   ];
   await Promise.allSettled(jobs);

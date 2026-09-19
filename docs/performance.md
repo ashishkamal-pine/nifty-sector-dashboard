@@ -61,6 +61,16 @@ stage 1 but kept blocking until stage 3 — so a click during the background sta
 silently swallowed by a button that looked perfectly usable. Auto-refresh still skips a
 tick while a load is genuinely running, so ticks cannot pile up.
 
+The same scheme now covers the rotation page, where the blocking guard caused a worse
+symptom: the segmented controls set `aria-pressed` the instant they are clicked, so
+changing timeframe mid-load left the button reading **Daily** while the chart still
+showed weekly data.
+
+A superseded load must also stay quiet on the way out. Its **failure** is discarded
+too — without that, an old request failing after a newer one succeeded marked the stage
+as errored while 181 good rows sat in memory, and the drill-down said
+"Could not load constituents" for the ~1.8s until something else corrected it.
+
 ## Warming and prefetching
 
 The server warms `sectors → constituents → sparks → rrg` on a background thread at

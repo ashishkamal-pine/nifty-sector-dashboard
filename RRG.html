@@ -770,8 +770,15 @@ scrim.addEventListener('click',closeHelp);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!sheet.hidden) closeHelp(); });
 
 /* ---------------- data ---------------- */
+// Same ticket scheme as the board. The old guard dropped any load that arrived
+// while one was in flight, but the segmented controls set aria-pressed the moment
+// they are clicked - so switching timeframe mid-load left the button reading Daily
+// while the chart still showed weekly data. A newer load now supersedes the older
+// one, and a superseded response is discarded instead of being drawn.
+let rrgGen = 0;
 async function load(force){
-  if(state.fetching) return;
+  const my = ++rrgGen;
+  const current = () => my === rrgGen;
   state.fetching=true;
   const btn=document.getElementById('refreshBtn');
   btn.textContent='Loading…'; btn.disabled=true;
@@ -785,6 +792,7 @@ async function load(force){
     if(!r.ok) throw new Error('HTTP '+r.status);
     const d=await r.json();
     if(d.error) throw new Error(d.error);
+    if(!current()) return;                     // a newer request owns the page
     state.data=d;
     buildScopeSelect(d.sectors||[]);
     document.getElementById('benchSeg').hidden = d.scope!=='sector';
@@ -822,14 +830,16 @@ async function load(force){
       (d.skipped.length ? '  Skipped (too little history): '+d.skipped.join(', ') : '');
     render();
   }catch(e){
+    if(!current()) return;
     // only suggest the server is down when the request itself failed to reach it
     const unreachable = /Failed to fetch|NetworkError|load failed/i.test(e.message);
     st.textContent = 'Could not load: ' + e.message +
       (unreachable ? ' — is app.py running?' : '');
     st.classList.add('err');
   }finally{
-    state.fetching=false; btn.textContent='Refresh'; btn.disabled=false;
+    if(current()){ state.fetching=false; btn.textContent='Refresh'; btn.disabled=false; }
   }
+  if(!current()) return;
   if(!force) prefetchNeighbours();
 }
 
