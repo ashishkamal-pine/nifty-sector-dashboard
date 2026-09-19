@@ -136,6 +136,10 @@ GET /api/rrg.json?scope=sectors|sector&name=<sector>&tf=weekly|daily&tail=N&benc
 | ISO-week grouping across a year boundary | correct |
 | All sectors' tails on identical dates | yes |
 | Chart, table, legend vs the payload | 0 mismatches |
+| Every dot decoded back through the plot transform | matches its data value exactly |
+| All 132 tail points decoded back | 0 mismatches |
+| Quadrant label vs which side of centre the dot sits | 0 mismatches |
+| Tail points falling outside the plot rect | 0 |
 | All 11 sectors drilled, both benchmarks | 0 skipped |
 | Tail lengths 4 / 8 / 12 / 20 / 30 | all honoured |
 | Weekly spacing 7 days, daily spacing 1 day | correct |
@@ -165,11 +169,14 @@ header says how many are unlabelled.
 There are no gridlines or tick numbers: the quadrant fills already say which side of 100
 a dot is on, and the exact values are in the card and the table.
 
-**The axes scale to the dots, not the tails.** Measured on live data, tails span 1.6× the
-dots on the x-axis and 2.7× on the y — scaling to them squeezed every dot into the middle
-third of the plot. At 1.8× the dot range the dots get roughly 55% of the plot, which costs
-about 14 of 132 tail points; those are always the oldest, faintest end, and they are
-clipped to the plot rect rather than allowed to escape the panel.
+**Each axis is scaled independently**, taking whichever is larger: enough room to spread
+the dots (1.8× their own range) or enough to contain every tail (1.05× theirs).
+
+These bind on different axes, which is why one rule for both did not work. Measured live:
+the x-axis needs 5.36 to hold the tails but 5.89 to spread the dots, so the dots win and
+nothing is lost; the y-axis needs 3.06 for tails against only 2.06 for dots, so the tails
+win. Scaling both to the dots alone let Realty, IT and Metal run off the top of the chart,
+which reads as broken; scaling both to the tails squeezed every dot into the middle.
 
 ## Reading it properly
 
@@ -196,6 +203,8 @@ sector's own constituents are doing.
 - **Daily mode is noisy**, as the reference document warns; weekly is the default for a
   reason.
 - **Resampled closes** are a few minutes early versus the official close.
+- **Dots spread less vertically than horizontally**, because the y-axis has to be wide
+  enough to contain the tails. That is the cost of never letting a tail leave the plot.
 - **Dense clusters go unlabelled** rather than overlapping. The count is shown in the
   chart header and every dot still names itself on hover.
 - **A long tail can be clipped** at the plot edge, because the axes are scaled to the

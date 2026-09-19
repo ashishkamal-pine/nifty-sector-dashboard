@@ -461,14 +461,23 @@ function render(){
   // Axes are scaled independently and symmetrically around 100: the momentum axis
   // spans a much narrower range than the ratio axis under this formula, and forcing
   // one shared scale would flatten every tail into a horizontal line.
-  // Scale to the DOTS, not the hidden tails. Measured on live data the tails span
-  // 1.6x the dots on x and 2.7x on y, so scaling to them squeezed every dot into the
-  // middle third. Dots get ~55% of the plot at 1.8x, which costs about 14 of 132 tail
-  // points - always the oldest, faintest end - and those are clipped to the plot rect
-  // rather than allowed to escape the panel.
-  const xs = d.points.map(p=>p.ratio), ys = d.points.map(p=>p.mom);
-  const halfOf = arr => Math.max(0.25, ...arr.map(v=>Math.abs(v-100))) * 1.8;
-  const hx=halfOf(xs), hy=halfOf(ys);
+  // Axis range, decided per axis. Scaling to the tails alone squeezed every dot into
+  // the middle of the plot; scaling to the dots alone let tails run off the edge,
+  // which reads as broken. So each axis takes whichever is larger: enough room to
+  // spread the dots (1.8x their own range) or enough to contain every tail.
+  //
+  // In practice these bind on different axes. Measured live: x needs 5.36 for tails
+  // and 5.89 for dot spread, so the dots win and nothing is lost; y needs 3.06 for
+  // tails but only 2.06 for dots, so the tails win and Realty, IT and Metal stop
+  // escaping the top of the chart.
+  const half = (vals, pad) => Math.max(0.25, ...vals.map(v=>Math.abs(v-100))) * pad;
+  const dotsX=[], dotsY=[], tailX=[], tailY=[];
+  d.points.forEach(p=>{
+    dotsX.push(p.ratio); dotsY.push(p.mom);
+    p.tail.forEach(t=>{ tailX.push(t.x); tailY.push(t.y); });
+  });
+  const hx = Math.max(half(dotsX,1.8), half(tailX,1.05));
+  const hy = Math.max(half(dotsY,1.8), half(tailY,1.05));
   const x0=100-hx, x1=100+hx, y0=100-hy, y1=100+hy;
   const X = v => M.l + (v-x0)/(x1-x0)*iw;
   const Y = v => M.t + (1-(v-y0)/(y1-y0))*ih;
