@@ -431,8 +431,23 @@ def build_sparks(symbols=None):
     """Sparkline series keyed by sector name and by stock symbol."""
     started = dt.datetime.now()
     if symbols is None:
-        cons = STORE.peek("constituents")[0] or {}
-        symbols = sorted({c["symbol"] for c in cons.get("constituents", [])}) or list(ALL_STOCKS)
+        # Depend on the constituents build rather than peeking at its cache. The
+        # browser asks for constituents and sparks in parallel, so a peek can miss
+        # and fall back to the static universe in universe.py - which is only
+        # correct for as long as it happens to match NSE. Proven by pretending the
+        # fallback was one symbol out of date: the cold build silently produced 170
+        # sparklines instead of 171, with no error anywhere.
+        #
+        # When constituents is already cached, which is the normal case because the
+        # warmer builds it first, this returns instantly and costs nothing.
+        try:
+            cons = STORE.get("constituents", build_constituents,
+                             fresh=FRESH["constituents"])[0]
+            symbols = sorted({c["symbol"] for c in cons.get("constituents", [])})
+        except Exception as e:
+            print(f"  ! sparks could not resolve membership ({str(e)[:40]}) - using fallback")
+            symbols = list(ALL_STOCKS)
+        symbols = symbols or list(ALL_STOCKS)
     want = {YAHOO_INDEX[s]: ("sector", s) for s in SECTORS}
     for sym in symbols:
         y = yahoo_stock(sym)

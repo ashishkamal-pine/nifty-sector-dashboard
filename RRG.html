@@ -417,8 +417,10 @@ RS-Momentum = 100 × RS-Ratio / EMA(RS-Ratio, n)</pre>
 
 <script>
 /* state is declared first: applyTheme() runs immediately and reads state.data */
+// no in-flight flag: loads supersede by ticket rather than blocking each other,
+// and a leftover flag that looks like a guard is how two bugs got written
 const state = { scope:'sectors', sector:null, tf:'weekly', tail:12, bench:'nifty',
-                data:null, hot:null, fetching:false };
+                data:null, hot:null };
 
 /* ---------------- theme ---------------- */
 const THEME_KEY='spb-theme';
@@ -779,7 +781,6 @@ let rrgGen = 0;
 async function load(force){
   const my = ++rrgGen;
   const current = () => my === rrgGen;
-  state.fetching=true;
   const btn=document.getElementById('refreshBtn');
   btn.textContent='Loading…'; btn.disabled=true;
   const st=document.getElementById('status');
@@ -837,7 +838,7 @@ async function load(force){
       (unreachable ? ' — is app.py running?' : '');
     st.classList.add('err');
   }finally{
-    if(current()){ state.fetching=false; btn.textContent='Refresh'; btn.disabled=false; }
+    if(current()){ btn.textContent='Refresh'; btn.disabled=false; }
   }
   if(!current()) return;
   if(!force) prefetchNeighbours();

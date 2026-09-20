@@ -21,6 +21,14 @@ split, cached, and delivered in the order the page can use it.
 2. **`/api/constituents.json`** → the drill-down becomes available
 3. **`/api/sparks.json`** → sparklines fill in
 
+Stage 3 *depends on* stage 2 rather than racing it. Sparks needs the symbol list, and
+the browser asks for both at once, so reading the constituents cache opportunistically
+could miss and silently fall back to the static universe in `universe.py` — correct only
+for as long as that happens to match NSE. It now goes through the store, which returns
+the cached copy instantly in the normal case and single-flights onto the in-progress
+build on a cold start. Cold, both requested in parallel: no deadlock, and zero stocks
+without a sparkline.
+
 Stages 2 and 3 run in parallel behind the grid, and the Refresh button re-enables as
 soon as stage 1 lands. A stage failing leaves the earlier ones intact — a sparkline
 outage cannot blank the board. The header shows what is still arriving.
