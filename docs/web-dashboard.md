@@ -176,6 +176,12 @@ a 282px-wide, 32-point sparkline) — which is why a hover could appear not to l
 point it was reporting. Measured after the fix, sweeping 94 pointer positions across a
 sparkline: crosshair-to-quoted-point drift **0.000px**.
 
+The card is also **clamped to the window** and flips below the sparkline when there is
+no room above. Anchoring it to the sample and centring it there pushed it off the edge on
+the outer columns — measured 23.8px past the left edge and 8.3px past the right, so the
+readout was clipped exactly where the tiles are widest. After the clamp: 0 of 28 probes
+on visible cards escape the viewport.
+
 Verified across all 574 chart/number pairs on the page (11 tiles + every stock row of
 every sector, in all three timeframes): **0 mismatches** between what a chart draws and
 what its row says.

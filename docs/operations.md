@@ -6,6 +6,10 @@
 python app.py
 ```
 
+If the port is already taken, `app.py` exits with a single line saying so rather than a
+traceback, and makes no upstream requests on the way out. The already-running instance is
+left completely alone.
+
 Opens <http://localhost:8765> (served on both `127.0.0.1` and `::1`; see performance.md), which **fetches live data as soon as it loads**. Prints
 a line per fetch. Ctrl+C to stop.
 

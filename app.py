@@ -35,6 +35,8 @@ import datetime as dt
 import urllib.parse
 import urllib.request
 import concurrent.futures
+import sys
+import errno
 import socket
 import threading
 import http.cookiejar
@@ -835,7 +837,36 @@ class Server6(Server):
 
 if __name__ == "__main__":
     url = f"http://localhost:{PORT}/"
-    # 127.0.0.1, not "" — do not expose this on the local network.
+
+    # Bind BEFORE warming. Warming fires a full round of NSE and Yahoo requests on a
+    # background thread, and a second instance that is about to die on "address already
+    # in use" has no business making them.
+    #
+    # IPv6 loopback as well as IPv4; see Server6. Losing IPv6 is survivable - the v4
+    # server still carries the dashboard - but a port that is already taken is not, and
+    # the two must not be reported the same way. errno 10048/98 is EADDRINUSE.
+    httpd6 = None
+    try:
+        httpd6 = Server6(("::1", PORT, 0, 0), Handler)
+    except OSError as e:
+        if e.errno in (errno.EADDRINUSE, 10048):
+            sys.exit(f"Port {PORT} is already in use - app.py is most likely "
+                     f"already running. Open {url} , or stop the other one first.")
+        print(f"  (no IPv6 loopback: {e}; the dashboard is still at http://127.0.0.1:{PORT}/ )")
+
+    try:
+        httpd = Server(("127.0.0.1", PORT), Handler)
+    except OSError as e:
+        if httpd6:
+            httpd6.server_close()
+        if e.errno in (errno.EADDRINUSE, 10048):
+            sys.exit(f"Port {PORT} is already in use - app.py is most likely "
+                     f"already running. Open {url} , or stop the other one first.")
+        raise
+
+    if httpd6:
+        threading.Thread(target=httpd6.serve_forever, daemon=True).start()
+
     # Build in the order the pages consume it, so the grid is ready first.
     STORE.warm([
         ("sectors",      build_sectors),
@@ -845,15 +876,7 @@ if __name__ == "__main__":
          lambda: build_rrg(scope="sectors", timeframe="weekly", tail="12")),
     ], label="warm")
 
-    # IPv6 loopback too, on its own thread; see Server6. If the box has no IPv6 the
-    # dashboard still works, it is just the v4 address that has to be used.
-    try:
-        httpd6 = Server6(("::1", PORT, 0, 0), Handler)
-        threading.Thread(target=httpd6.serve_forever, daemon=True).start()
-    except OSError as e:
-        print(f"  (no IPv6 loopback: {e}; use http://127.0.0.1:{PORT}/ )")
-
-    with Server(("127.0.0.1", PORT), Handler) as httpd:
+    with httpd:
         print(f"Dashboard running at {url}")
         print('Click "Load Data" in the page to pull fresh prices. Ctrl+C to stop.\n')
         try:

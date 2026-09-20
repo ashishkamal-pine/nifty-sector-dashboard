@@ -90,17 +90,29 @@ alternate benchmark for the sector being viewed.
 
 ## Measured
 
-| Path | Before | After |
-|---|---|---|
-| First load, grid visible | ~5000ms | **312ms** warm · 557ms cold |
-| First load, everything | ~5000ms | 648ms |
-| **Manual refresh**, grid repainted | ~5000ms | **216ms** (button usable at 232ms; the rest continues behind) |
-| Auto-refresh | ~5000ms | 648ms |
-| `/api/sectors.json` warm | — | **5ms** |
-| RRG sectors warm | ~540ms | 45ms |
-| RRG, a combination never requested before | ~540ms | 1541ms (inherent — nothing to reuse) |
+Re-measured after the IPv6 fix below, from real navigation timing on a warm cache.
+The earlier figures in this table were taken while every connection was still paying
+the 2-second stall, so they are superseded:
 
-HTML itself serves in 3ms, so the shell is on screen effectively immediately in every case.
+| Path | Originally | Before the IPv6 fix | Now |
+|---|---|---|---|
+| TCP connect | — | ~2050ms | **0ms** |
+| HTML time to first byte | — | — | 5ms |
+| DOMContentLoaded | — | — | 16ms |
+| First load, grid data ready | ~5000ms | 312ms | **21ms** |
+| First load, everything ready | ~5000ms | 648ms | **38ms** |
+| `/api/sectors.json` warm | — | 5ms | 7ms |
+| `/api/constituents.json` warm | — | — | 3ms |
+| `/api/sparks.json` warm | — | — | 7ms |
+| `/api/live_data.json` warm | — | — | 8ms |
+| RRG sectors warm | ~540ms | 45ms | 3ms |
+| RRG, a combination never requested before | ~540ms | 1541ms | 1541ms (inherent — nothing to reuse) |
+
+Only the last row is unchanged, and rightly so: there is nothing cached to reuse.
+
+The RRG prefetch was confirmed to actually fire by counting `fetch` calls directly.
+Do not trust the resource-timing buffer in this environment — it has repeatedly omitted
+requests that demonstrably happened.
 
 ## The 2-second stall that dwarfed all of it
 
@@ -124,6 +136,26 @@ banner says which address to use.
 
 After: `localhost` connects in 5/22/0/17ms, and every route — `/`, `/rrg`, and all four
 API endpoints — answers in 1–34ms.
+
+## Warming must not start before the port is bound
+
+`STORE.warm()` used to run before either socket was bound, so a second instance about to
+die on "address already in use" still fired a full round of NSE and Yahoo requests on
+its way out. The bind now happens first.
+
+The two failure modes are also no longer conflated. Losing IPv6 is survivable — the v4
+server carries the dashboard — but an occupied port is not, and both were being reported
+as `(no IPv6 loopback: ...)` followed by a raw traceback, with advice to use
+`127.0.0.1:8765`, which is precisely the address that was already taken. EADDRINUSE now
+exits with one plain line naming the real cause.
+
+## Auto-refresh skips a tick while a cycle is in flight
+
+`setInterval` fired every 30s regardless of whether the previous cycle had finished.
+The generation ticket in `loadLive()` meant a superseded load could never corrupt the
+page, so this was never *wrong* — but it was pointless upstream traffic, and on a slow
+NSE the cycles would stack up one per 30s for as long as the stall lasted. The guard for
+this had been written and never wired in: `loading()` was declared and never called.
 
 ## Sparklines cannot assume stage order
 
