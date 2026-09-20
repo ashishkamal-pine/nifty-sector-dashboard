@@ -60,6 +60,10 @@ STORE = Store(workers=4)
 # from the same keys, and it would be wrong for the same entry to be considered
 # fresh for 45s down one route and 90s down another.
 FRESH = {"sectors": 30, "constituents": 45, "sparks": 90, "rrg": 120}
+# A payload built from the Yahoo fallback is not worth holding onto for as long
+# as a healthy one: the interesting question is whether NSE is back, and the
+# normal window would keep answering "still Yahoo" for 30-45s without asking.
+DEGRADED_FRESH = 10
 SPARK_URL = "https://query2.finance.yahoo.com/v7/finance/spark"
 BATCH_SIZE = 20           # symbols per request; 30+ returns HTTP 400
 RANGE = "3mo"             # enough bars to derive weekly and monthly references
@@ -943,6 +947,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path in PARTS:
             key, builder = PARTS[path]
             fresh = FRESH[key]
+            cached = STORE.peek(key)[0]
+            if cached and cached.get("degraded"):
+                fresh = min(fresh, DEGRADED_FRESH)      # retry NSE sooner; see DEGRADED_FRESH
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             force = (q.get("force") or [""])[0] in ("1", "true", "yes")
             try:

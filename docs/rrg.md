@@ -185,6 +185,27 @@ nothing is lost; the y-axis needs 3.06 for tails against only 2.06 for dots, so 
 win. Scaling both to the dots alone let Realty, IT and Metal run off the top of the chart,
 which reads as broken; scaling both to the tails squeezed every dot into the middle.
 
+## Clicking things
+
+| Where you are | Clicking a dot or a row |
+|---|---|
+| All sectors | drills into that sector's constituents |
+| Inside a sector | opens that stock on TradingView |
+
+Inside a sector there is nothing further to drill into, so `drill()` returned immediately
+and **every dot and row on the constituents chart was dead** - which is exactly the view
+where the TradingView chart is the thing you want. Both now route through `activate()`,
+which picks the action that makes sense for the scope.
+
+The stock name itself is the link, the same markup the board uses, rather than a separate
+arrow glyph beside plain text. Clicking the name is the obvious thing to try and it used
+to do nothing: the only target was an 11px arrow. The name is a 93x26px target now, and
+the hover card says which of the two actions a click will perform.
+
+Rows stay keyboard reachable in both scopes, with the aria-label naming the actual action
+("show constituents" or "Open PNB on TradingView"). The row handler skips anything inside
+an anchor, so clicking the link does not also fire the row.
+
 ## Reading it properly
 
 The dot is only where a sector is now. The tail is usually the more useful half:

@@ -121,6 +121,7 @@
               stroke:var(--surface);stroke-width:3.5px;stroke-linejoin:round;
               transition:fill .12s ease;}
   .series{cursor:pointer;}
+  #tbody tr.actionable{cursor:pointer;}
   .series.dim{opacity:.5;}
   .series.dim .head-label{fill:var(--ink-3);}
   .series.hot .head-label{fill:var(--ink);font-weight:700;}
@@ -152,8 +153,15 @@
          vertical-align:middle;}
   .hd{display:inline-block;font-size:12px;color:var(--ink-3);}
 
-  .tv{color:var(--ink-3);text-decoration:none;font-size:11px;font-weight:600;}
-  .tv:hover{color:var(--ink);text-decoration:underline;}
+  .tv{
+    display:inline-flex;align-items:center;gap:3px;
+    color:var(--ink);text-decoration:none;font-weight:600;
+    border:1px solid transparent;border-radius:6px;padding:2px 5px;margin:-2px -5px;
+    transition:color .12s ease,border-color .12s ease,background .12s ease;
+  }
+  .tv:hover{text-decoration:underline;border-color:var(--border);background:var(--surface-2);}
+  .tv:focus-visible{outline:2px solid var(--ink);outline-offset:1px;}
+  .tv .ext{font-size:10px;opacity:.7;}
 
   #tip{position:fixed;z-index:60;pointer-events:none;opacity:0;left:0;top:0;
        background:#1c1c1b;color:#fff;border-radius:9px;padding:11px 14px;
@@ -166,6 +174,8 @@
   #tip .tr b{color:#fff;font-weight:700;font-variant-numeric:tabular-nums;}
   #tip .tq{margin-top:7px;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;}
   #tip .tm{margin-top:6px;font-size:11px;color:rgba(255,255,255,.5);}
+  #tip .tc{margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.14);
+           font-size:11px;color:rgba(255,255,255,.66);}
 
   /* ---------- help ---------- */
   .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;
@@ -579,7 +589,7 @@ function render(){
   // table
   document.getElementById('tbody').innerHTML = d.points.map(p=>`
     <tr data-name="${p.name}" class="${state.hot===p.name?'hot':''}">
-      <td class="nm">${p.label||p.name}${p.short?`<abbr class="short" title="Only ${p.periods} ${d.timeframe==='weekly'?'weeks':'days'} of history — this position is less settled than the rest"> short</abbr>`:''}${p.tv?` <a class="tv" href="https://in.tradingview.com/chart/?symbol=${encodeURIComponent(p.tv)}" target="_blank" rel="noopener noreferrer" title="Open on TradingView">↗</a>`:''}</td>
+      <td class="nm">${tvLink(p.tv, p.label||p.name)}${p.short?`<abbr class="short" title="Only ${p.periods} ${d.timeframe==='weekly'?'weeks':'days'} of history — this position is less settled than the rest"> short</abbr>`:''}</td>
       <td><span class="chip" style="color:${qColor(p.quadrant)};border-color:${qColor(p.quadrant)}">
             <span class="sw" style="background:${qColor(p.quadrant)}"></span>${p.quadrant}</span></td>
       <td class="r num">${p.ratio.toFixed(2)}</td>
@@ -640,6 +650,17 @@ const fmtAx = v => (Math.abs(v-Math.round(v))<0.05 ? v.toFixed(0) : v.toFixed(1)
 
 /* ---------------- interaction ---------------- */
 const tip=document.getElementById('tip');
+// Same markup as the board: the whole name is the link, with the arrow as an
+// affordance inside it, rather than an 11px glyph sitting beside plain text. Clicking
+// the name is the obvious thing to try, and it used to do nothing.
+function tvUrl(tv){ return 'https://in.tradingview.com/chart/?symbol=' + encodeURIComponent(tv); }
+
+function tvLink(tv, label){
+  if(!tv) return label;
+  return `<a class="tv" href="${tvUrl(tv)}" target="_blank" rel="noopener noreferrer"
+     title="Open ${tv} on TradingView">${label}<span class="ext">↗</span></a>`;
+}
+
 function showTip(p, anchorEl){
   const last=p.tail[p.tail.length-1];
   tip.innerHTML =
@@ -647,7 +668,10 @@ function showTip(p, anchorEl){
     `<div class="tr"><span>RS-Ratio</span><b>${p.ratio.toFixed(1)}</b></div>` +
     `<div class="tr"><span>RS-Momentum</span><b>${p.mom.toFixed(1)}</b></div>` +
     `<div class="tq" style="color:${qColor(p.quadrant)}">${p.quadrant}</div>` +
-    `<div class="tm">heading ${bearing(p.heading)} · ${p.tail.length} periods to ${last.d}</div>`;
+    `<div class="tm">heading ${bearing(p.heading)} · ${p.tail.length} periods to ${last.d}</div>` +
+    (state.scope==='sectors'
+       ? `<div class="tc">click to see its stocks</div>`
+       : (p.tv ? `<div class="tc">click to open on TradingView ↗</div>` : ''));
   // Anchored to the dot so the card does not jitter with the pointer, then kept
   // inside the viewport: sitting it blindly above the dot put it off-screen for
   // most sectors once the page was scrolled at all.
@@ -670,26 +694,52 @@ function wireHover(){
   document.querySelectorAll('#rrg .series').forEach(g=>{
     g.addEventListener('mouseenter', ()=>{ if(state.hot!==g.dataset.name) set(g.dataset.name); });
     g.addEventListener('mouseleave', ()=>{ hideTip(); set(null); });
-    g.addEventListener('click', ()=>drill(g.dataset.name));
+    g.addEventListener('click', ()=>activate(g.dataset.name));
   });
-  const canDrill = state.scope==='sectors';
+  const drilling = state.scope==='sectors';
   document.querySelectorAll('#tbody tr').forEach(tr=>{
-    tr.addEventListener('mouseenter', ()=>{ if(state.hot!==tr.dataset.name) set(tr.dataset.name); });
+    const nm = tr.dataset.name;
+    const pt = (state.data.points||[]).find(x=>x.name===nm);
+    // In the constituents view the row is only actionable if we actually have a
+    // TradingView symbol for it; without one there is nothing for a click to do and
+    // it should not pretend otherwise.
+    const actionable = drilling || !!(pt && pt.tv);
+    tr.addEventListener('mouseenter', ()=>{ if(state.hot!==nm) set(nm); });
     tr.addEventListener('mouseleave', ()=>set(null));
-    tr.addEventListener('click', e=>{ if(!e.target.closest('a')) drill(tr.dataset.name); });
-    if(canDrill){
+    tr.addEventListener('click', e=>{ if(!e.target.closest('a')) activate(nm); });
+    if(actionable){
       tr.tabIndex = 0;
       tr.setAttribute('role','button');
-      tr.setAttribute('aria-label', tr.dataset.name + ' — show constituents');
-      tr.addEventListener('focus', ()=>set(tr.dataset.name));
+      tr.setAttribute('aria-label', drilling
+        ? nm + ' \u2014 show constituents'
+        : 'Open ' + nm + ' on TradingView');
+      tr.classList.add('actionable');
+      tr.addEventListener('focus', ()=>set(nm));
       tr.addEventListener('blur',  ()=>set(null));
       tr.addEventListener('keydown', e=>{
         if((e.key==='Enter'||e.key===' ') && !e.target.closest('a')){
-          e.preventDefault(); drill(tr.dataset.name);
+          e.preventDefault(); activate(nm);
         }
       });
     }
   });
+}
+
+// What a click means depends on where you are, and one of the two cases used to do
+// nothing at all. On the sectors chart a click drills into that sector's stocks. Inside
+// a sector there is nothing further to drill into, so drill() returned immediately and
+// every dot and row on the constituents chart was simply dead - which is precisely the
+// view where the TradingView chart is the thing you want. A click there now opens it.
+function openTV(name){
+  const p = (state.data.points||[]).find(x=>x.name===name);
+  if(!p || !p.tv) return false;
+  window.open(tvUrl(p.tv), '_blank', 'noopener,noreferrer');
+  return true;
+}
+
+function activate(name){
+  if(state.scope==='sectors') return drill(name);
+  return openTV(name);
 }
 
 function drill(name){
