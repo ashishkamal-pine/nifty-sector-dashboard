@@ -6,6 +6,42 @@
 python app.py
 ```
 
+## "NSE unreachable" / "No data yet"
+
+The dashboard being on screen only proves `app.py` is running - the page is served by it.
+"NSE unreachable" means that machine could not reach nseindia.com, which is a network
+question, not a dashboard one, and it varies by machine and connection. NSE in particular
+blocks traffic it judges automated, and decides that **per IP address**, so the same code
+can work on one connection and be refused on another.
+
+Run the checker in the project folder:
+
+```
+python diagnose.py
+```
+
+It walks the same path `app.py` takes - DNS, TCP, TLS, the NSE homepage, the cookie-primed
+index API, then Yahoo - and names the first step that fails plus what usually causes it.
+It changes nothing.
+
+Common causes, in rough order of likelihood:
+
+| Symptom | Usual cause |
+|---|---|
+| TLS certificate verification failed | Antivirus or a company network inspecting HTTPS. Try `pip install --upgrade certifi`, or a different network |
+| HTTP 403 from NSE | NSE is refusing that IP. VPNs, office networks and data-centre IPs are common casualties; a home connection or phone hotspot usually works |
+| Timed out | A firewall dropping the traffic silently, or NSE rate-limiting |
+| Name resolution failed | Offline, or DNS filtering |
+| Connection refused | A proxy or firewall. Set `HTTPS_PROXY` before starting if the machine needs one |
+
+The page now names the cause itself rather than only saying "unreachable", and the empty
+grid distinguishes the three situations that used to share one message: still loading, the
+server is up but NSE is not reachable, and the server itself is not running. The old text
+told people to start `app.py` even when `app.py` was plainly already running and answering.
+
+If Yahoo is blocked but NSE is not, prices and percentages are still correct - only the
+sparklines and the rotation page go empty.
+
 If the port is already taken, `app.py` exits with a single line saying so rather than a
 traceback, and makes no upstream requests on the way out. The already-running instance is
 left completely alone.

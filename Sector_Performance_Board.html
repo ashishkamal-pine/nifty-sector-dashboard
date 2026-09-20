@@ -210,6 +210,7 @@
   .up .spark .line{stroke:var(--up);}   .up .spark .area{fill:var(--up-wash);}
   .down .spark .line{stroke:var(--down);} .down .spark .area{fill:var(--down-wash);}
   .flat .spark .line{stroke:var(--ink-3);} .flat .spark .area{fill:transparent;}
+  .empty-sub{color:var(--ink-2);font-size:13px;}
   .spark .cursor{stroke:var(--ink-3);stroke-width:1px;opacity:0;vector-effect:non-scaling-stroke;}
   .spark:hover .cursor{opacity:.7;}
 
@@ -528,15 +529,37 @@ function renderSummary(list){
     statTile('Timeframe', tfLabel(state.timeframe), 'vs previous close');
 }
 
+function esc(t){ return String(t).replace(/[&<>"']/g,
+  c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
 function renderGrid(){
   const list = rankedSectors();
   renderSummary(list);
   const grid = document.getElementById('sectorGrid');
   document.getElementById('gridHint').textContent = list.length ? `${list.length} sectors` : '';
   if(!list.length){
-    grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
-      <strong>No data yet.</strong><br>Press <strong>Refresh</strong> — if that fails, start the server with <code>python app.py</code>.
-    </div>`;
+    // Three different situations used to share one message that assumed the server was
+    // not running. When app.py IS running and it is NSE that cannot be reached, telling
+    // someone to start app.py sends them looking in entirely the wrong place - and
+    // Refresh cannot fix a blocked network either.
+    let body;
+    if(stage.sectors === 'loading'){
+      body = `<strong>Loading sectors…</strong>`;
+    }else if(state.meta && state.meta.reason){
+      body = `<strong>The dashboard is running, but it could not reach NSE.</strong><br>`
+           + `${esc(state.meta.reason)}<br>`
+           + `<span class="empty-sub">Run <code>python diagnose.py</code> in the project `
+           + `folder to see which step fails.</span>`;
+    }else if(stage.sectors === 'error'){
+      body = `<strong>Could not reach the dashboard server.</strong><br>`
+           + `<span class="empty-sub">Start it with <code>python app.py</code>, then press `
+           + `<strong>Refresh</strong>.</span>`;
+    }else{
+      body = `<strong>No data yet.</strong><br><span class="empty-sub">Press `
+           + `<strong>Refresh</strong> — if that fails, start the server with `
+           + `<code>python app.py</code>.</span>`;
+    }
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1">${body}</div>`;
     return;
   }
   grid.innerHTML = list.map((s,i) => {

@@ -362,13 +362,41 @@ def weekly_refs(symbols):
 # seconds for data it was not about to show. These build separately and the
 # browser asks for them in the order it can use them.
 # ---------------------------------------------------------------------------
+def _why_unreachable(e):
+    """A one-line plain-English cause for an NSE fetch failure."""
+    t = f"{type(e).__name__}: {e}".lower()
+    if "certificate" in t or "ssl" in t:
+        return ("TLS certificate verification failed, which usually means antivirus or "
+                "a company network is inspecting HTTPS traffic.")
+    if "getaddrinfo" in t or "name or service" in t or "name resolution" in t:
+        return ("the machine could not resolve nseindia.com - it is offline, or DNS is "
+                "being filtered.")
+    if "timed out" in t or "timeout" in t:
+        return ("NSE accepted the connection but never replied - usually a firewall "
+                "dropping traffic, or NSE rate-limiting this address.")
+    if "403" in t or "401" in t:
+        return ("NSE refused the request. It blocks traffic it judges automated, and "
+                "that is decided per IP address - VPNs and office networks are common "
+                "casualties.")
+    if "connection refused" in t or "unreachable" in t:
+        return "the network refused the connection outright - typically a proxy or firewall."
+    return f"{type(e).__name__}: {str(e)[:90]}"
+
+
 def build_sectors():
     """The 11 official sector rows. ~0.2s, ~2 KB - this is what paints the grid."""
     started = dt.datetime.now()
+    reason = None
     try:
         nse = fetch_nse_sectors(_nse_opener())
     except Exception as e:
-        print(f"  ! NSE indices unreachable ({str(e)[:50]})")
+        # Carry the real cause through to the page. "NSE unreachable" on its own sends
+        # people hunting for a dashboard bug when the actual answer is a blocked
+        # network, a TLS interception certificate, or NSE refusing that IP - and the
+        # only place that said so was this console line, which nobody is looking at.
+        reason = _why_unreachable(e)
+        print(f"  ! NSE indices unreachable ({type(e).__name__}: {str(e)[:120]})")
+        print(f"    {reason}  -  run 'python diagnose.py' for a full check")
         nse = {}
     sectors = []
     for sector in SECTORS:
@@ -387,7 +415,9 @@ def build_sectors():
         "generated_at": started.isoformat(timespec="seconds"),
         "source": "NSE (official indices)" if nse else "NSE unreachable",
         "note": ("All sector figures are official NSE index values." if nse
-                 else "NSE unreachable - sector data unavailable."),
+                 else f"NSE unreachable - {reason} Run 'python diagnose.py' in the "
+                      f"project folder for a step-by-step check."),
+        "reason": reason,
         "sectors": sectors,
     }
 
