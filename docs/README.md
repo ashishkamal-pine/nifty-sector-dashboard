@@ -28,6 +28,7 @@ no login, no token.
 | Web dashboard | `Sector_Performance_Board.html` | The performance board |
 | Rotation graph | `RRG.html` + `rrg.py` | Relative Rotation Graph at `/rrg` |
 | Server + fetcher | `app.py` | Serves the page and pulls live data on request |
+| Connectivity check | `diagnose.py` | Says whether this machine can actually reach NSE and Yahoo, step by step. Run it when the board says "NSE unreachable" |
 | Sector universe | `universe.py` | Single source of truth: sectors, stocks, index names |
 
 Data comes from two free, key-less sources, with NSE authoritative:
