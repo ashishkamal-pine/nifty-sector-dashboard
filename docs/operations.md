@@ -85,6 +85,39 @@ is accepted. If *every* client is refused, it really is the address, and a phone
 is the quickest confirmation. If some are accepted, it is fingerprinting, and the output
 says which client works.
 
+### What happens when NSE stays unreachable
+
+The board does not sit empty. When NSE cannot be reached it falls back to Yahoo and says
+so in a banner above the grid. Measured by blocking NSE on a machine that NSE accepts and
+comparing every figure against the official values captured moments earlier:
+
+| Figure | Accuracy in fallback mode |
+|---|---|
+| Sector daily | worst 0.15pp |
+| Sector weekly | worst 0.24pp |
+| Sector monthly | worst 1.43pp - **approximate** |
+| Stock daily | median 0.000pp, worst 1.38pp |
+| Stock weekly | median 0.000pp, worst 1.37pp |
+| Stock monthly | **approximate** |
+| Membership | bundled snapshot, not live NSE |
+
+Two details decide that accuracy.
+
+**The previous close comes from `range=1d`, not from the history bars.** Yahoo's daily
+bars have gaps - 17 Sep was missing for many stocks - so `bars[-2]` silently becomes the
+day before the previous close. That put 54 of 171 stocks out by more than 0.5pp, worst
+4.68pp. `meta.chartPreviousClose` from a `range=1d` request matches NSE's `prevD`
+exactly, which is why the fallback issues two requests per batch rather than one.
+
+**"One month ago" is the same date a calendar month back**, not a flat 30 days. Measured
+against NSE's own `oneMonthAgoVal`: 30 days is worst 2.16pp out, the calendar month
+1.43pp. Neither is exact, because NSE's reference date is its own and cannot be read
+while NSE is down - hence the approximate label rather than a silent number.
+
+The residual stock error is Yahoo's live price lagging NSE's, not the reference: on the
+worst names the previous close agrees to the paisa while the last traded price does not.
+That is irreducible without NSE.
+
 If Yahoo is blocked but NSE is not, prices and percentages are still correct - only the
 sparklines and the rotation page go empty.
 

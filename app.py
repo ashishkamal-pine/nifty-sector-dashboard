@@ -352,6 +352,123 @@ def weekly_refs(symbols):
 
 
 # ---------------------------------------------------------------------------
+# Yahoo fallback
+#
+# NSE refuses some IP addresses outright. Measured across two machines, asking
+# https://www.nseindia.com/ the same way: one address is served, the other gets 403
+# for every client tried, curl.exe and its separate TLS stack included. There is
+# nothing the code can do about that from the refused side.
+#
+# Yahoo is reachable from both, so when NSE cannot be reached the board falls back
+# to Yahoo rather than showing an empty page. This is a DEGRADED mode and says so:
+#
+#   daily     accurate  - measured worst error vs official NSE, 0.15pp
+#   weekly    accurate  - worst 0.24pp
+#   monthly   APPROXIMATE - worst 2.16pp, because NSE's "one month ago" reference
+#             date is its own and cannot be read while NSE is unreachable; this
+#             uses the last close at least 30 days back instead
+#   membership  from the offline snapshot in universe.py, not live NSE
+#
+# Index levels come from 2y of hourly bars resampled to daily closes, the same
+# method rrg.py uses, because Yahoo carries real daily bars for only 3 of the 11
+# sector indices but hourly bars for all of them.
+# ---------------------------------------------------------------------------
+def _same_date_last_month(last):
+    """20 Sep -> 20 Aug; 31 Mar -> 28/29 Feb."""
+    year, month = (last.year, last.month - 1) if last.month > 1 else (last.year - 1, 12)
+    for day in range(last.day, 0, -1):
+        try:
+            return dt.date(year, month, day)
+        except ValueError:
+            continue
+    return last - dt.timedelta(days=30)
+
+
+def _refs_from_daily(day_map):
+    """{date: close} -> (ltp, prevD, prevW, prevM) or None if too short."""
+    days = sorted(day_map)
+    if len(days) < 2:
+        return None
+    last = days[-1]
+    ltp, prevD = day_map[last], day_map[days[-2]]
+
+    def at_or_before(cut):
+        for d in reversed(days):
+            if d <= cut:
+                return day_map[d]
+        return None
+
+    # "One month ago" is the same date a calendar month back, not a fixed 30 days.
+    # Measured against NSE's own oneMonthAgoVal across the 11 sector indices: a flat
+    # 30 days is worst 2.16pp out, the calendar month 1.43pp. Neither is exact,
+    # because NSE's reference date is its own and cannot be read while NSE is down -
+    # which is why the monthly figure is labelled approximate in this mode.
+    return (ltp, prevD,
+            at_or_before(last - dt.timedelta(days=7)) or prevD,
+            at_or_before(_same_date_last_month(last)) or prevD)
+
+
+def yahoo_sector_rows():
+    """The 11 sector rows from Yahoo. Used only when NSE is unreachable."""
+    closes = rrg.fetch_daily_closes(_get_json, [YAHOO_INDEX[s] for s in SECTORS])
+    rows = []
+    for sector in SECTORS:
+        got = closes.get(YAHOO_INDEX[sector])
+        if not got:
+            continue
+        refs = _refs_from_daily(got)
+        if not refs:
+            continue
+        ltp, prevD, prevW, prevM = refs
+        rows.append({
+            "sector": sector, "indexSymbol": YAHOO_INDEX[sector],
+            "approxWM": True,          # the monthly reference is ours, not NSE's
+            "prevD": round(prevD, 2), "prevW": round(prevW, 2),
+            "prevM": round(prevM, 2), "ltp": round(ltp, 2),
+            "tv": TRADINGVIEW_INDEX.get(sector),
+        })
+    return rows
+
+
+def yahoo_constituent_rows():
+    """Offline membership + Yahoo prices. Used only when NSE is unreachable."""
+    ymap = {}
+    for sector, syms in SECTORS.items():
+        for sym in syms:
+            y = yahoo_stock(sym)
+            if y:
+                ymap[y] = (sector, sym)
+    # Two ranges, because neither alone is right:
+    #
+    #   range=1d    meta.chartPreviousClose IS the previous close, and matches NSE's
+    #               prevD exactly (median error 0.000pp across 171 stocks).
+    #   range=3mo   enough history for the weekly and monthly references, but its
+    #               daily bars have GAPS - 09-17 is missing for many stocks, so
+    #               bars[-2] silently becomes the day before last rather than the
+    #               previous close. That put 54 of 171 stocks out by more than
+    #               0.5pp, worst 4.68pp, which is not worth shipping.
+    live = fetch_bars(list(ymap), rng="1d")
+    hist = fetch_bars(list(ymap), rng="3mo")
+    rows = []
+    for ysym, data in hist.items():
+        sector, sym = ymap[ysym]
+        refs = _refs_from_daily(dict(data["bars"]))
+        if not refs:
+            continue
+        last_close, gap_prevD, prevW, prevM = refs
+        today = live.get(ysym) or {}
+        ltp = today.get("ltp") or data.get("ltp") or last_close
+        prevD = today.get("prev_close") or gap_prevD
+        rows.append({
+            "sector": sector, "symbol": sym,
+            "prevD": round(prevD, 2), "prevW": round(prevW, 2),
+            "prevM": round(prevM, 2), "ltp": round(float(ltp), 2),
+            "tv": tradingview_symbol(sym),
+        })
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # Split builders
 #
 # Profiled on live data, the old single payload spent its time like this:
@@ -375,9 +492,10 @@ def _why_unreachable(e):
         return ("NSE accepted the connection but never replied - usually a firewall "
                 "dropping traffic, or NSE rate-limiting this address.")
     if "403" in t or "401" in t:
-        return ("NSE refused the request. It blocks traffic it judges automated, and "
-                "that is decided per IP address - VPNs and office networks are common "
-                "casualties.")
+        return ("NSE refused the request outright. It blocks addresses it judges "
+                "automated, and measured across two machines that decision is per IP - "
+                "on a refused address every client is refused, curl included, so there "
+                "is nothing to change locally. The board falls back to Yahoo.")
     if "connection refused" in t or "unreachable" in t:
         return "the network refused the connection outright - typically a proxy or firewall."
     return f"{type(e).__name__}: {str(e)[:90]}"
@@ -409,15 +527,36 @@ def build_sectors():
             "prevM": round(n["prevM"], 2), "ltp": round(n["ltp"], 2),
             "tv": TRADINGVIEW_INDEX.get(sector),
         })
+
+    degraded = False
+    if not sectors:
+        try:
+            sectors = yahoo_sector_rows()
+            degraded = bool(sectors)
+            if degraded:
+                print(f"  falling back to Yahoo for {len(sectors)} sector indices")
+        except Exception as e:
+            print(f"  ! Yahoo fallback failed too ({type(e).__name__}: {str(e)[:60]})")
     print(f"[{started:%H:%M:%S}] sectors: {len(sectors)}/{len(SECTORS)} "
           f"in {(dt.datetime.now()-started).total_seconds():.1f}s")
+    if nse:
+        source, note = "NSE (official indices)", "All sector figures are official NSE index values."
+    elif degraded:
+        source = "Yahoo (NSE unreachable)"
+        note = ("NSE could not be reached, so these are Yahoo index levels. Daily and "
+                "weekly are accurate to about 0.2%; the monthly figure is approximate "
+                "because NSE's own one-month reference date is not available. "
+                "Constituent lists come from the bundled snapshot, not live NSE.")
+    else:
+        source = "NSE unreachable"
+        note = (f"NSE unreachable - {reason} Yahoo could not fill in either. "
+                f"Run 'python diagnose.py' in the project folder for a step-by-step check.")
     return {
         "generated_at": started.isoformat(timespec="seconds"),
-        "source": "NSE (official indices)" if nse else "NSE unreachable",
-        "note": ("All sector figures are official NSE index values." if nse
-                 else f"NSE unreachable - {reason} Run 'python diagnose.py' in the "
-                      f"project folder for a step-by-step check."),
-        "reason": reason,
+        "source": source,
+        "note": note,
+        "reason": None if nse else reason,
+        "degraded": degraded,
         "sectors": sectors,
     }
 
@@ -452,6 +591,17 @@ def build_constituents():
                     "prevM": round(r["prevM"], 2), "ltp": round(r["ltp"], 2),
                     "tv": tradingview_symbol(r["symbol"]),
                 })
+    degraded = False
+    if not constituents:
+        try:
+            constituents = yahoo_constituent_rows()
+            degraded = bool(constituents)
+            if degraded:
+                print(f"  falling back to Yahoo + bundled membership "
+                      f"for {len(constituents)} stocks")
+        except Exception as e:
+            print(f"  ! Yahoo constituent fallback failed ({type(e).__name__}: {str(e)[:60]})")
+
     print(f"[{started:%H:%M:%S}] constituents: {len(constituents)} rows "
           f"in {(dt.datetime.now()-started).total_seconds():.1f}s")
 
@@ -463,6 +613,7 @@ def build_constituents():
     return {
         "generated_at": started.isoformat(timespec="seconds"),
         "weekly_missing": weekly_missing,
+        "degraded": degraded,
         "constituents": constituents,
     }
 

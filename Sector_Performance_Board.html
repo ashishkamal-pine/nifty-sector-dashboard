@@ -211,6 +211,14 @@
   .down .spark .line{stroke:var(--down);} .down .spark .area{fill:var(--down-wash);}
   .flat .spark .line{stroke:var(--ink-3);} .flat .spark .area{fill:transparent;}
   .empty-sub{color:var(--ink-2);font-size:13px;}
+  /* Degraded-source banner. Deliberately not red: nothing is broken, the numbers are
+     simply from a second-choice source, so it has to read as information rather than
+     as an alarm. */
+  #srcBanner{display:none;margin:0 0 20px;padding:12px 16px;border:1px solid var(--line);
+             border-left:3px solid var(--ink-2);border-radius:8px;background:var(--surface-2);}
+  #srcBanner.show{display:block;}
+  #srcBanner .bt{font-weight:650;font-size:13px;margin-bottom:3px;}
+  #srcBanner .bb{font-size:12.5px;color:var(--ink-2);line-height:1.55;}
   .spark .cursor{stroke:var(--ink-3);stroke-width:1px;opacity:0;vector-effect:non-scaling-stroke;}
   .spark:hover .cursor{opacity:.7;}
 
@@ -301,7 +309,7 @@
     <div>
       <div class="eyebrow">NSE · Equity Sectors</div>
       <h1>Sector Performance Board</h1>
-      <div class="sub">Official NSE index values. Select a sector to see its constituents.</div>
+      <div class="sub" id="boardSub">Official NSE index values. Select a sector to see its constituents.</div>
     </div>
     <div class="controls">
       <div class="seg" id="tfToggle" role="group" aria-label="Timeframe">
@@ -330,6 +338,12 @@
     <div class="section-head">
       <h2>All sectors — best to worst</h2>
       <span class="hint" id="gridHint"></span>
+    </div>
+    <div id="srcBanner" role="status">
+      <div>
+        <div class="bt" id="srcBannerTitle"></div>
+        <div class="bb" id="srcBannerBody"></div>
+      </div>
     </div>
     <div class="grid" id="sectorGrid"></div>
   </div>
@@ -657,6 +671,26 @@ document.getElementById('tfToggle').addEventListener('click', e => {
 });
 document.getElementById('backBtn').addEventListener('click', closeDrilldown);
 
+function renderSourceBanner(data){
+  const el  = document.getElementById('srcBanner');
+  const sub = document.getElementById('boardSub');
+  if(!data || !data.degraded){
+    el.classList.remove('show');
+    sub.textContent = 'Official NSE index values. Select a sector to see its constituents.';
+    return;
+  }
+  document.getElementById('srcBannerTitle').textContent =
+    'Showing Yahoo data — NSE could not be reached from this machine';
+  document.getElementById('srcBannerBody').innerHTML =
+      'Daily and weekly figures are accurate to roughly 0.2%. '
+    + '<strong>Monthly is approximate</strong> — NSE’s own one-month reference '
+    + 'date cannot be read while NSE is unreachable. Constituent lists come from the '
+    + 'bundled snapshot rather than live NSE membership. '
+    + 'Run <code>python diagnose.py</code> to see why NSE is refusing this machine.';
+  el.classList.add('show');
+  sub.textContent = 'Yahoo index levels (NSE unreachable). Select a sector to see its constituents.';
+}
+
 function renderStamp(data){
   const el = document.getElementById('stamp');
   if(data && data.generated_at){
@@ -755,6 +789,7 @@ async function loadLive(force){
     applySparks();       // keep the previous run's trends rather than blanking them
     state.meta = d;
     renderStamp(d);
+    renderSourceBanner(d);
     setLiveStatus(`${d.sectors.length} sectors · ${d.source}`, true);
     document.getElementById('footer').textContent = d.note || '';
     rerender();
