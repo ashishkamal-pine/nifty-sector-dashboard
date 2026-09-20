@@ -29,7 +29,7 @@ Common causes, in rough order of likelihood:
 | Symptom | Usual cause |
 |---|---|
 | TLS certificate verification failed | Antivirus or a company network inspecting HTTPS. Try `pip install --upgrade certifi`, or a different network |
-| HTTP 403 from NSE | NSE is refusing that IP. VPNs, office networks and data-centre IPs are common casualties; a home connection or phone hotspot usually works |
+| HTTP 403 from NSE | NSE's bot protection refused the **client**, which is usually not about the IP at all - see below |
 | Timed out | A firewall dropping the traffic silently, or NSE rate-limiting |
 | Name resolution failed | Offline, or DNS filtering |
 | Connection refused | A proxy or firewall. Set `HTTPS_PROXY` before starting if the machine needs one |
@@ -38,6 +38,40 @@ The page now names the cause itself rather than only saying "unreachable", and t
 grid distinguishes the three situations that used to share one message: still loading, the
 server is up but NSE is not reachable, and the server itself is not running. The old text
 told people to start `app.py` even when `app.py` was plainly already running and answering.
+
+### A 403 from NSE is usually about the client, not the network
+
+NSE sits behind Akamai, which fingerprints the TLS handshake and headers. Measured from
+one machine on one IP address, asking `https://www.nseindia.com/` four different ways in
+the same minute:
+
+| Client | Result |
+|---|---|
+| `app.py`'s urllib client | **200** |
+| a hand-rolled "browser-like" cipher order | 403 |
+| `curl.exe` | 403 |
+| `requests` | 403 |
+
+Same address, same moment, four verdicts. So a 403 does not mean the connection is
+blocked - it means that particular client was not recognised.
+
+The practical consequence is that **the Python version matters**. OpenSSL 3.5, which
+ships with Python 3.14, enables hybrid post-quantum key exchange (`X25519MLKEM768`) by
+default, changing the ClientHello substantially. Python 3.12 ships OpenSSL 3.0, which
+does not offer it at all. `_nse_ssl_context()` therefore pins the classical groups
+(`X25519:P-256:P-384`) when the running Python supports `set_groups()` - added in 3.13 -
+and is a deliberate no-op on older builds, which were never offering ML-KEM anyway.
+
+When a 403 appears, run:
+
+```
+python probe_nse.py
+```
+
+It asks NSE the same question with several different clients and says whether anything
+is accepted. If *every* client is refused, it really is the address, and a phone hotspot
+is the quickest confirmation. If some are accepted, it is fingerprinting, and the output
+says which client works.
 
 If Yahoo is blocked but NSE is not, prices and percentages are still correct - only the
 sparklines and the rotation page go empty.

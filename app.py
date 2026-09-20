@@ -37,6 +37,7 @@ import urllib.request
 import concurrent.futures
 import sys
 import errno
+import ssl
 import socket
 import threading
 import http.cookiejar
@@ -177,9 +178,40 @@ _NSE_API = dict(_NSE_BASE, **{
 })
 
 
+def _nse_ssl_context():
+    """
+    A TLS context NSE's bot protection recognises.
+
+    NSE sits behind Akamai, which fingerprints the ClientHello. Measured from one
+    machine and one IP address, asking the same URL four ways: this client got 200
+    while curl, requests, and a hand-rolled browser-like cipher order all got 403.
+    So the 403 is about the client, not the address.
+
+    OpenSSL 3.5 turned on hybrid post-quantum key exchange (X25519MLKEM768) by
+    default. That changes the ClientHello substantially - new group IDs and a much
+    larger key share - and it is a plausible way to stop matching whatever Akamai
+    expects. Python 3.14 ships with OpenSSL 3.5; Python 3.12 ships with 3.0, which
+    has no ML-KEM and is refused by nobody here.
+
+    Offering the classical groups only costs nothing for a public price feed and
+    keeps the handshake looking like the one that is known to work. set_groups()
+    arrived in Python 3.13, so on older builds this is a no-op - which is correct,
+    because those builds were never offering ML-KEM in the first place.
+    """
+    ctx = ssl.create_default_context()
+    if hasattr(ctx, "set_groups"):
+        try:
+            ctx.set_groups("X25519:P-256:P-384")
+        except (ValueError, OSError) as e:
+            print(f"  ! could not pin TLS groups ({e}); continuing with defaults")
+    return ctx
+
+
 def _nse_opener():
     cj = http.cookiejar.CookieJar()
-    op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+    op = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=_nse_ssl_context()),
+        urllib.request.HTTPCookieProcessor(cj))
     req = urllib.request.Request(NSE_HOME, headers=_NSE_NAV)
     with op.open(req, timeout=TIMEOUT) as r:     # prime cookies
         r.read()
