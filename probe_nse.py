@@ -24,7 +24,7 @@ import urllib.request
 
 sys.path.insert(0, ".")
 try:
-    from app import NSE_HOME, _NSE_NAV, TIMEOUT, UA, _nse_ssl_context
+    from app import NSE_HOME, _NSE_NAV, TIMEOUT, UA
 except Exception as e:
     sys.exit(f"Run this from the project folder.  ({e})")
 
@@ -87,35 +87,16 @@ def probe_cipher_order():
         return False, f"{type(e).__name__}: {e}"
 
 
-# 2b. classical key-exchange groups, no post-quantum hybrid ------------------
-#     OpenSSL 3.5 (Python 3.14) offers X25519MLKEM768 by default, which changes the
-#     ClientHello a lot. OpenSSL 3.0 (Python 3.12) does not offer it at all and is
-#     accepted. This is the fix app.py now applies.
-def probe_classical_groups():
-    ctx = ssl.create_default_context()
-    if not hasattr(ctx, "set_groups"):
-        return None, ("this Python cannot pin TLS groups (needs 3.13+), and so was "
-                      "never offering post-quantum ones either")
+# 2b. a pinned key-exchange curve -------------------------------------------
+#     Measured on a machine NSE accepts: the DEFAULT context gets 200, while
+#     pinning any single curve gets 403. Narrowing the handshake makes matters
+#     worse, not better, so app.py deliberately leaves the TLS context alone.
+def probe_pinned_curve():
     try:
-        ctx.set_groups("X25519:P-256:P-384")
-    except Exception as e:
-        return False, f"could not pin groups: {type(e).__name__}: {e}"
-    try:
+        ctx = ssl.create_default_context()
+        ctx.set_ecdh_curve("X25519")
         op = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
-        req = urllib.request.Request(NSE_HOME, headers=_NSE_NAV)
-        with op.open(req, timeout=TIMEOUT) as r:
-            return r.status == 200, f"HTTP {r.status}"
-    except Exception as e:
-        return False, f"{type(e).__name__}: {e}"
-
-
-# 2c. exactly what app.py does now -------------------------------------------
-def probe_app_fixed():
-    try:
-        op = urllib.request.build_opener(
-            urllib.request.HTTPSHandler(context=_nse_ssl_context()))
-        req = urllib.request.Request(NSE_HOME, headers=_NSE_NAV)
-        with op.open(req, timeout=TIMEOUT) as r:
+        with op.open(urllib.request.Request(NSE_HOME, headers=_NSE_NAV), timeout=TIMEOUT) as r:
             return r.status == 200, f"HTTP {r.status}"
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
@@ -166,8 +147,7 @@ except Exception as _e:
 print(f"Asking {NSE_HOME} the same question several different ways\n")
 
 for name, fn in (("app.py's plain client (urllib defaults)", probe_urllib),
-                 ("classical TLS groups, no post-quantum", probe_classical_groups),
-                 ("app.py as it is now patched", probe_app_fixed),
+                 ("pinned key-exchange curve", probe_pinned_curve),
                  ("browser cipher order + keep-alive", probe_cipher_order),
                  ("curl.exe (different TLS stack)", probe_curl),
                  ("requests library", probe_requests)):
@@ -196,8 +176,6 @@ else:
     print("block - NSE is fingerprinting the client. Accepted:")
     for g in good:
         print(f"  - {g}")
-    if results.get("app.py as it is now patched"):
-        print("\nThe patched app.py client is accepted - 'python app.py' should now work.")
-    else:
-        print("\nThe patched client was still refused. Send this output back.")
+    print("\nThat is the client app.py already uses, so the dashboard should work here.")
+    print("If it does not, the block is on a different NSE endpoint - send this output back.")
 print()

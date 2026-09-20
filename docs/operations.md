@@ -55,12 +55,24 @@ the same minute:
 Same address, same moment, four verdicts. So a 403 does not mean the connection is
 blocked - it means that particular client was not recognised.
 
-The practical consequence is that **the Python version matters**. OpenSSL 3.5, which
-ships with Python 3.14, enables hybrid post-quantum key exchange (`X25519MLKEM768`) by
-default, changing the ClientHello substantially. Python 3.12 ships OpenSSL 3.0, which
-does not offer it at all. `_nse_ssl_context()` therefore pins the classical groups
-(`X25519:P-256:P-384`) when the running Python supports `set_groups()` - added in 3.13 -
-and is a deliberate no-op on older builds, which were never offering ML-KEM anyway.
+Narrowing the handshake makes this **worse**, not better. Measured on the accepting
+machine: the default context gets 200, while pinning any single key-exchange curve
+(`set_ecdh_curve`) gets 403. An attempt to pin "classical" TLS groups was written, found
+to be inert - `SSLContext.set_groups()` does not exist in CPython, on 3.12 or on 3.14 -
+and then reverted once it was shown that correcting it would have broken the working
+case. `app.py` deliberately leaves the TLS context alone.
+
+Client fingerprinting is not the whole story either. On an address NSE refuses, *every*
+client is refused, `curl.exe` and its separate TLS stack included. Measured on two
+machines:
+
+| Client | Accepting IP | Refusing IP |
+|---|---|---|
+| `app.py`'s urllib | 200 | 403 |
+| `curl.exe` | 403 | 403 |
+
+So the two failure modes are distinguishable: if some clients pass, it is the client; if
+none do, it is the address. That is exactly what `probe_nse.py` reports.
 
 When a 403 appears, run:
 
