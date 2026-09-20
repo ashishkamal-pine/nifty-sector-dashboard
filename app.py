@@ -35,6 +35,8 @@ import datetime as dt
 import urllib.parse
 import urllib.request
 import concurrent.futures
+import socket
+import threading
 import http.cookiejar
 import http.server
 import socketserver
@@ -420,11 +422,29 @@ def build_constituents():
                 })
     print(f"[{started:%H:%M:%S}] constituents: {len(constituents)} rows "
           f"in {(dt.datetime.now()-started).total_seconds():.1f}s")
+
+    # Sparklines are keyed by symbol and cached for twice as long as membership is,
+    # so the two drift: a stock added by NSE showed no sparkline for up to the sparks
+    # window, silently, because each cache expired on its own clock. If the symbol
+    # set has moved, the sparks entry is dropped so the next read rebuilds it.
+    _drop_sparks_if_membership_changed({c["symbol"] for c in constituents})
     return {
         "generated_at": started.isoformat(timespec="seconds"),
         "weekly_missing": weekly_missing,
         "constituents": constituents,
     }
+
+
+def _drop_sparks_if_membership_changed(symbols):
+    spk = STORE.peek("sparks")[0]
+    if not spk:
+        return
+    covered = set(spk.get("covers") or spk.get("constituents") or {})
+    if covered and covered != symbols:
+        added, gone = symbols - covered, covered - symbols
+        print(f"  membership changed (+{len(added)} -{len(gone)}) - rebuilding sparklines"
+              + (f" for {', '.join(sorted(added)[:4])}" if added else ""))
+        STORE.drop("sparks")
 
 
 def build_sparks(symbols=None):
@@ -463,6 +483,9 @@ def build_sparks(symbols=None):
           f"{len(out['constituents'])} stocks in "
           f"{(dt.datetime.now()-started).total_seconds():.1f}s")
     out["generated_at"] = started.isoformat(timespec="seconds")
+    # Record exactly which stocks this build covers, so a later membership change
+    # can be detected rather than silently leaving new rows without a sparkline.
+    out["covers"] = sorted(out["constituents"])
     return out
 
 
@@ -797,6 +820,19 @@ class Server(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
 
+class Server6(Server):
+    """The same server on IPv6 loopback.
+
+    "localhost" resolves to ::1 before 127.0.0.1 on Windows. Binding only the IPv4
+    loopback does not make the IPv6 attempt fail fast - Windows drops the SYN rather
+    than refusing it, so the client sits in a connect timeout before falling back.
+    Measured on this machine: 2050 ms to connect to localhost:8765 against 0 ms to
+    127.0.0.1:8765, on EVERY new connection. That dwarfed every other cost on the
+    page. Listening on both loopbacks removes it whichever name is used.
+    """
+    address_family = socket.AF_INET6
+
+
 if __name__ == "__main__":
     url = f"http://localhost:{PORT}/"
     # 127.0.0.1, not "" — do not expose this on the local network.
@@ -808,6 +844,14 @@ if __name__ == "__main__":
         (("rrg", "sectors", None, "weekly", "12", "nifty"),
          lambda: build_rrg(scope="sectors", timeframe="weekly", tail="12")),
     ], label="warm")
+
+    # IPv6 loopback too, on its own thread; see Server6. If the box has no IPv6 the
+    # dashboard still works, it is just the v4 address that has to be used.
+    try:
+        httpd6 = Server6(("::1", PORT, 0, 0), Handler)
+        threading.Thread(target=httpd6.serve_forever, daemon=True).start()
+    except OSError as e:
+        print(f"  (no IPv6 loopback: {e}; use http://127.0.0.1:{PORT}/ )")
 
     with Server(("127.0.0.1", PORT), Handler) as httpd:
         print(f"Dashboard running at {url}")

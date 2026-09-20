@@ -70,6 +70,11 @@ class Store:
                     :len(self._data) - self._max_entries]:
                 del self._data[k]
 
+    def drop(self, key):
+        """Forget one entry, so the next read rebuilds it."""
+        with self._lock:
+            self._data.pop(key, None)
+
     def invalidate(self, prefix=None):
         with self._lock:
             if prefix is None:

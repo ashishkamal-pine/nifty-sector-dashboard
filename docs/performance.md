@@ -102,6 +102,50 @@ alternate benchmark for the sector being viewed.
 
 HTML itself serves in 3ms, so the shell is on screen effectively immediately in every case.
 
+## The 2-second stall that dwarfed all of it
+
+`localhost` resolves to `::1` before `127.0.0.1` on Windows, but the server bound only
+the IPv4 loopback. Binding one stack does not make the other fail fast — Windows drops
+the IPv6 SYN rather than refusing it, so the client sat in a connect timeout before
+falling back. Measured on this machine, per connection:
+
+| Target | Connect |
+|---|---|
+| `localhost` | **2064 / 2017 / 2050 ms** |
+| `127.0.0.1` | 16 / 0 / 0 ms |
+
+`app.py` opens the browser at `http://localhost:8765/`, so this was being paid on the
+normal path, on every fresh connection, and it dwarfed every other cost on the page.
+
+`Server6` now listens on `::1` alongside the IPv4 server, so the stall is gone whichever
+name is used. It is still loopback-only — the dashboard is not exposed on the network.
+If the machine has no IPv6 the bind fails, the v4 server carries on, and the startup
+banner says which address to use.
+
+After: `localhost` connects in 5/22/0/17ms, and every route — `/`, `/rrg`, and all four
+API endpoints — answers in 1–34ms.
+
+## Sparklines cannot assume stage order
+
+Stages 2 (constituents) and 3 (sparks) race, and neither may assume the other has
+landed. Merging sparks on receipt alone lost **every stock sparkline** whenever sparks
+won: the merge mapped over a still-empty `state.constituents`, then the constituents
+reply overwrote the rows with sparkless ones. Sector tiles survived only because stage 1
+had already filled `state.sectors` — which is exactly the 11-tiles / 0-rows split that
+showed up on screen.
+
+Sparks are now kept as their own payload (`state.sparks`) and re-applied by
+`applySparks()` whenever either side arrives, including after stage 1 on a refresh so
+tiles keep their trends instead of blanking. Verified by forcing each ordering with a
+1.2s delay injected into `fetch`: 15/15 row sparklines and 11/11 tile sparklines in both
+orderings and on a plain refresh.
+
+The same class of bug on the server — `sparks` and `constituents` having different
+freshness windows, so a newly added NSE constituent had no sparkline for up to 90s
+silently — is handled by `build_sparks` recording `covers`, and `build_constituents`
+calling `Store.drop("sparks")` when membership actually changes. The check costs 1.3ms
+per 200 calls and does not fire when membership is unchanged.
+
 ## Endpoints
 
 | Route | Contents | Fresh |

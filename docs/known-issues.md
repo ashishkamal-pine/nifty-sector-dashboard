@@ -82,6 +82,17 @@ Worth remembering if a configurable source is ever reintroduced.
 
 ## Resolved by the current design
 
+## Sparkline interiors are still Yahoo's
+
+Both ends of every sparkline are pinned to NSE: the dashed baseline is NSE's
+`prevD`/`prevW`/`prevM` and the final point is snapped to the NSE LTP, so the chart
+begins and ends exactly where the row's numbers say. The **points in between** are still
+Yahoo's intraday bars, so the path can differ slightly from NSE's own intraday record.
+Measured deviation of the last bar before snapping: median 0.000%, worst 1.31%. The
+shape is right; do not read an intermediate point as an official NSE price.
+
+## Fixed in earlier passes
+
 These applied to the removed Fyers pipeline and no longer exist:
 
 | Was | Why it is gone |

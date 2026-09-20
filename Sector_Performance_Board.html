@@ -383,7 +383,8 @@ document.getElementById('themeBtn').addEventListener('click', () => {
 });
 
 /* ---------------- state ---------------- */
-let state = { timeframe:'daily', sectors:[], constituents:[], selectedSector:null, meta:null };
+let state = { timeframe:'daily', sectors:[], constituents:[], selectedSector:null, meta:null,
+              sparks:null };
 
 const fieldForTf = (tf) => tf === 'weekly' ? 'prevW' : tf === 'monthly' ? 'prevM' : 'prevD';
 const sparkKey   = (tf) => tf === 'weekly' ? 'w'     : tf === 'monthly' ? 'm'     : 'd';
@@ -435,8 +436,11 @@ function sparkSvg(vals, ref){
   const y = v => (H - ((v - lo) / span) * (H - 3) - 1.5).toFixed(2);
   const pts  = vals.map((v,i) => x(i) + ',' + y(v)).join(' ');
   const base = (ref ? `<polyline class="base" points="0,${y(ref)} ${W},${y(ref)}"/>` : '');
+  // ref is carried on the element: the hover readout has to measure against the same
+  // baseline the dashed line draws and the tile headline quotes, not against the first
+  // point of the window.
   return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"
-            data-vals="${vals.join(',')}">
+            data-vals="${vals.join(',')}"${ref ? ` data-ref="${ref}"` : ''}>
     <polygon class="area" points="0,${H} ${pts} ${W},${H}"/>
     ${base}
     <polyline class="line" points="${pts}"/>
@@ -444,7 +448,17 @@ function sparkSvg(vals, ref){
   </svg>`;
 }
 function sparkFor(row){
-  return sparkSvg(row.spark && row.spark[sparkKey(state.timeframe)], row[fieldForTf(state.timeframe)]);
+  // The series is Yahoo's intraday bars; the price quoted on the row is NSE's LTP.
+  // For most names the last bar already equals the LTP exactly (median deviation
+  // 0.000%), but 39 of 181 stocks carry a stale final bar - worst seen, CENTRALBK at
+  // 31.73 against an NSE LTP of 32.15, 1.31% out. That made the end of the line
+  // disagree with the number printed beside it. NSE is the authoritative price, so
+  // the last point is snapped to it. Sector indices already match to the paisa.
+  let vals = row.spark && row.spark[sparkKey(state.timeframe)];
+  if(vals && vals.length && isFinite(row.ltp) && row.ltp){
+    vals = vals.slice(0, -1).concat(row.ltp);
+  }
+  return sparkSvg(vals, row[fieldForTf(state.timeframe)]);
 }
 
 /* shared hover readout for every sparkline on the page */
@@ -457,14 +471,27 @@ document.addEventListener('mousemove', (e) => {
   const r = svg.getBoundingClientRect();
   const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
   const i = Math.round(f * (vals.length - 1));
-  const first = vals[0], v = vals[i];
+  // Measure from the reference price (previous close / week / month) - the dashed
+  // baseline on this very chart - so the readout agrees with the headline figure and
+  // with which side of that line the point sits on. Measuring from vals[0] instead
+  // disagreed with the tile on every sector (e.g. +1.51% on the tile, +0.72% on hover)
+  // and inverted the sign outright whenever the session gapped through the reference.
+  const refAttr = parseFloat(svg.dataset.ref);
+  const first = isFinite(refAttr) && refAttr ? refAttr : vals[0];
+  const v = vals[i];
   const d = first ? (v - first) / first * 100 : 0;
+  // Snap the crosshair and the card to the point being QUOTED, not to the pointer.
+  // The readout is the nearest sample, i = round(f*(n-1)), but the line used to be
+  // drawn at the raw f - so it sat between samples while the number described one of
+  // them, by up to half a point spacing (~4.5px on a 282px, 32-point sparkline). That
+  // is why a hover could appear not to land on the point it was reporting.
+  const pf = i / (vals.length - 1);
   tip.textContent = fmtPrice(v) + '   ' + (d >= 0 ? '+' : '') + d.toFixed(2) + '%';
-  tip.style.left = e.clientX + 'px';
+  tip.style.left = (r.left + pf * r.width) + 'px';
   tip.style.top  = r.top + 'px';
   tip.classList.add('show');
   const line = svg.querySelector('.cursor');
-  if(line){ const xx = (f * 100).toFixed(2); line.setAttribute('x1', xx); line.setAttribute('x2', xx); }
+  if(line){ const xx = (pf * 100).toFixed(2); line.setAttribute('x1', xx); line.setAttribute('x2', xx); }
 }, {passive:true});
 
 /* ---------------- render ---------------- */
@@ -656,9 +683,23 @@ async function getJSON(url, force){
   return d;
 }
 
+// Stages 2 and 3 race each other, so neither may assume the other has landed.
+// Sparklines are kept as their own payload and re-applied whenever either side
+// arrives. Merging on receipt alone lost every stock sparkline whenever sparks won
+// the race: it mapped over an empty state.constituents, and the constituents reply
+// then overwrote the rows with sparkless ones. Tiles survived only because stage 1
+// had already filled state.sectors, which is why the grid had trends and the
+// drilldown table did not.
+function applySparks(){
+  const sp = state.sparks;
+  if(!sp) return;
+  state.sectors = state.sectors.map(s=>({...s, spark: (sp.sectors||{})[s.sector] || s.spark}));
+  state.constituents = state.constituents.map(c=>({...c, spark: (sp.constituents||{})[c.symbol] || c.spark}));
+}
+
 function mergeSparks(sp){
-  state.sectors = state.sectors.map(s=>({...s, spark: sp.sectors[s.sector] || s.spark}));
-  state.constituents = state.constituents.map(c=>({...c, spark: sp.constituents[c.symbol] || c.spark}));
+  state.sparks = sp;
+  applySparks();
 }
 
 async function loadLive(force){
@@ -677,6 +718,7 @@ async function loadLive(force){
     const d = await getJSON('/api/sectors.json', force);
     if(!current()) return;
     state.sectors = d.sectors;
+    applySparks();       // keep the previous run's trends rather than blanking them
     state.meta = d;
     renderStamp(d);
     setLiveStatus(`${d.sectors.length} sectors · ${d.source}`, true);
@@ -699,6 +741,7 @@ async function loadLive(force){
     getJSON('/api/constituents.json', force).then(d=>{
       if(!current()) return;
       state.constituents = d.constituents;
+      applySparks();                      // sparks may already be in, see applySparks
       if(state.meta) state.meta.weekly_missing = d.weekly_missing;
       stage.constituents='done';
       rerender(); setStageNote();

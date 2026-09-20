@@ -151,9 +151,34 @@ reference does not get amplified into fake volatility. `preserveAspectRatio="non
 `vector-effect="non-scaling-stroke"` keeps the stroke even when the SVG is stretched to
 the tile width.
 
-**Note the sparkline for a sector comes from Yahoo's index series while the percentages
-come from NSE.** The shape is right; the absolute levels can differ slightly from NSE's
-official figure.
+**The sparkline series comes from Yahoo while the percentages come from NSE.** The shape
+is right; intermediate levels can differ slightly from NSE's official figures.
+
+The **last point is snapped to the NSE LTP**, because that is the price printed next to
+it. Sector indices already agreed to the paisa (max deviation 0.000%), but 39 of 181
+stocks carried a stale final Yahoo bar — worst case CENTRALBK at 31.73 against an NSE
+LTP of 32.15, 1.31% out — which made the end of the line disagree with the number beside
+it. NSE is authoritative, so the line ends there.
+
+### Hover readout
+
+Hovering any sparkline shows the value at the nearest sample and its change **measured
+from the dashed reference line**, not from the first point of the window. Measuring from
+the first point disagreed with the headline on every single tile (+1.51% on the tile
+against +0.72% on hover) and would have inverted the sign outright on any session that
+gapped through the reference: the line would sit above the dashed baseline while the
+readout claimed a loss.
+
+The crosshair and the card are **snapped to the sample being quoted**, not to the
+pointer. Drawing the crosshair at the raw pointer position left it sitting between
+samples while the number described one of them, by up to half a point spacing (~4.5px on
+a 282px-wide, 32-point sparkline) — which is why a hover could appear not to land on the
+point it was reporting. Measured after the fix, sweeping 94 pointer positions across a
+sparkline: crosshair-to-quoted-point drift **0.000px**.
+
+Verified across all 574 chart/number pairs on the page (11 tiles + every stock row of
+every sector, in all three timeframes): **0 mismatches** between what a chart draws and
+what its row says.
 
 ## TradingView links
 

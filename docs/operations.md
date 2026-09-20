@@ -6,7 +6,7 @@
 python app.py
 ```
 
-Opens <http://localhost:8765>, which **fetches live data as soon as it loads**. Prints
+Opens <http://localhost:8765> (served on both `127.0.0.1` and `::1`; see performance.md), which **fetches live data as soon as it loads**. Prints
 a line per fetch. Ctrl+C to stop.
 
 **Requirements:** Python 3.7+ and an internet connection. No `pip install`, no account,
