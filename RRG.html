@@ -587,8 +587,12 @@ function render(){
     ).join('') +
     `<span class="lg" style="border-style:dashed">Centre = ${d.benchmark}</span>`;
 
-  // table
-  document.getElementById('tbody').innerHTML = d.points.map(p=>`
+  // Sort only the table; preserve the graph's existing point order.
+  const positions = [...d.points].sort((a,b)=>{
+    const aValid = Number.isFinite(a.pct_change), bValid = Number.isFinite(b.pct_change);
+    return aValid && bValid ? b.pct_change - a.pct_change : Number(bValid) - Number(aValid);
+  });
+  document.getElementById('tbody').innerHTML = positions.map(p=>`
     <tr data-name="${p.name}" class="${state.hot===p.name?'hot':''}">
       <td class="nm">${tvLink(p.tv, p.label||p.name)}${p.short?`<abbr class="short" title="Only ${p.periods} ${d.timeframe==='weekly'?'weeks':'days'} of history — this position is less settled than the rest"> short</abbr>`:''}</td>
       <td><span class="chip" style="color:${qColor(p.quadrant)};border-color:${qColor(p.quadrant)}">
