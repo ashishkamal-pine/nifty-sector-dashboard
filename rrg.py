@@ -233,6 +233,11 @@ def build(get_json, members, bench_symbol, bench_label,
         cut = max(0, len(dates) - tail)
         pts = [{"d": dates[i].isoformat(), "x": round(ratio[i], 3), "y": round(mom[i], 3)}
                for i in range(cut, len(dates))]
+        # RRG dates are already aligned and sampled for the selected timeframe.
+        # Use the member's prices, not its benchmark-relative strength, for return.
+        previous_close = sec[dates[-2]]
+        pct_change = ((sec[dates[-1]] / previous_close - 1) * 100
+                      if previous_close else None)
         points.append({
             "name": m["name"],
             "label": m.get("label") or m["name"],
@@ -241,6 +246,7 @@ def build(get_json, members, bench_symbol, bench_label,
             "mom": pts[-1]["y"],
             "quadrant": quadrant_of(pts[-1]["x"], pts[-1]["y"]),
             "heading": heading_of(pts),
+            "pct_change": pct_change,
             "periods": len(dates),
             "short": short,
             "tail": pts,

@@ -97,8 +97,8 @@
   #status.err{color:var(--down);}
 
   /* ---------- layout ---------- */
-  .cols{display:grid;grid-template-columns:minmax(0,1.32fr) minmax(300px,1fr);gap:16px;align-items:start;}
-  @media (max-width:980px){ .cols{grid-template-columns:1fr;} }
+  .cols{display:grid;grid-template-columns:minmax(0,1.32fr) minmax(600px,1fr);gap:16px;align-items:start;}
+  @media (max-width:1100px){ .cols{grid-template-columns:1fr;} }
 
   .panel{background:var(--surface);border:1px solid var(--border);
          border-radius:var(--radius);overflow:hidden;}
@@ -289,6 +289,7 @@
           <thead><tr>
             <th>Name</th><th>Quadrant</th>
             <th class="r">RS-Ratio</th><th class="r">RS-Mom</th><th class="r">Heading</th>
+            <th class="r" id="changeHeader">% change</th>
           </tr></thead>
           <tbody id="tbody"></tbody>
         </table>
@@ -595,8 +596,12 @@ function render(){
       <td class="r num">${p.ratio.toFixed(2)}</td>
       <td class="r num">${p.mom.toFixed(2)}</td>
       <td class="r"><span class="hd">${bearing(p.heading)}</span></td>
+      <td class="r num" style="color:${Number.isFinite(p.pct_change)?p.pct_change>0?'var(--up)':p.pct_change<0?'var(--down)':'inherit':'inherit'}">${Number.isFinite(p.pct_change)?(p.pct_change>0?'+':'')+p.pct_change.toFixed(2)+'%':'—'}</td>
     </tr>`).join('');
 
+  document.getElementById('changeHeader').title = d.timeframe==='weekly'
+    ? 'Price change since the previous weekly close (the current week may be incomplete)'
+    : 'Price change since the previous trading day close';
   document.getElementById('tblHint').textContent =
     `${d.points.length} plotted${d.skipped.length?` · ${d.skipped.length} skipped`:''}`;
   const unlabelled = +(svg.dataset.hiddenLabels||0);
