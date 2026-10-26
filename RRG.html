@@ -267,7 +267,11 @@
     <span>Smoothing <b id="mSmooth">10</b></span>
     <span class="sep">·</span>
     <span>As of <b id="mAsOf">—</b></span>
+    <span class="sep">·</span>
+    <span title="When the displayed RRG was calculated; source prices may be delayed">Updated <b id="mUpdated">—</b></span>
   </div>
+
+  <p class="sub" id="quadrantBasis">RRG quadrants describe a smoothed trend against the benchmark. The highest price return can still be in the Lagging quadrant.</p>
 
   <div class="cols">
     <div class="panel">
@@ -287,7 +291,7 @@
       <div style="overflow-x:auto">
         <table>
           <thead><tr>
-            <th>Name</th><th>Quadrant</th>
+            <th>Name</th><th title="Based on smoothed relative strength and momentum against the selected benchmark">RRG quadrant</th>
             <th class="r">RS-Ratio</th><th class="r">RS-Mom</th><th class="r">Heading</th>
             <th class="r" id="changeHeader">% change</th>
           </tr></thead>
@@ -837,7 +841,19 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!sheet.hidden) clo
 // while the chart still showed weekly data. A newer load now supersedes the older
 // one, and a superseded response is discarded instead of being drawn.
 let rrgGen = 0;
+let rrgLoading = false, rrgRefreshTimer = null;
+const RRG_REFRESH_MS = 120000; // matches the server's RRG freshness window
+function scheduleRrgRefresh(){
+  clearTimeout(rrgRefreshTimer);
+  rrgRefreshTimer = null;
+  if(!document.hidden){
+    rrgRefreshTimer = setTimeout(()=>load(), RRG_REFRESH_MS);
+  }
+}
 async function load(force){
+  clearTimeout(rrgRefreshTimer);
+  rrgRefreshTimer = null;
+  rrgLoading = true;
   const my = ++rrgGen;
   const current = () => my === rrgGen;
   const btn=document.getElementById('refreshBtn');
@@ -865,7 +881,12 @@ async function load(force){
       (d.scope==='sector'? d.sector+' constituents' : 'NSE sector indices') + ' vs ' + d.benchmark;
     document.getElementById('mBench').textContent=d.benchmark;
     document.getElementById('mSmooth').textContent=d.smoothing+' ('+d.timeframe+')';
+    document.getElementById('quadrantBasis').textContent =
+      `${d.timeframe==='weekly'?'Weekly':'Daily'} RRG uses ${d.smoothing}-period smoothing against ${d.benchmark}. ` +
+      `The highest ${d.timeframe} price return can still be in the Lagging quadrant.`;
     document.getElementById('mAsOf').textContent=d.as_of||'—';
+    document.getElementById('mUpdated').textContent =
+      d.generated_at ? d.generated_at.replace('T',' ') : '—';
     // A weekly point dated before Friday means this week has not closed yet, so the
     // newest dot will keep moving until it does. Worth saying rather than hiding.
     const pw=document.getElementById('partial');
@@ -897,7 +918,11 @@ async function load(force){
       (unreachable ? ' — is app.py running?' : '');
     st.classList.add('err');
   }finally{
-    if(current()){ btn.textContent='Refresh'; btn.disabled=false; }
+    if(current()){
+      btn.textContent='Refresh'; btn.disabled=false;
+      rrgLoading = false;
+      scheduleRrgRefresh();
+    }
   }
   if(!current()) return;
   if(!force) prefetchNeighbours();
@@ -928,6 +953,19 @@ function prefetchNeighbours(){
   .addEventListener('change',()=>{prefetched=false;}));
 document.getElementById('tfSeg').addEventListener('click',()=>{prefetched=false;});
 document.getElementById('benchSeg').addEventListener('click',()=>{prefetched=false;});
+
+// Refresh the selected scope/timeframe on return, and avoid polling hidden tabs.
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){
+    clearTimeout(rrgRefreshTimer);
+    rrgRefreshTimer = null;
+  }else if(!rrgLoading){
+    load();
+  }
+});
+window.addEventListener('focus',()=>{
+  if(!document.hidden && !rrgLoading) load();
+});
 
 load();
 </script>

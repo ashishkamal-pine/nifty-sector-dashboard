@@ -920,8 +920,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             try:
                 make = lambda: build_rrg(scope=key[0], name=key[1], timeframe=key[2],
                                          tail=key[3], bench=key[4])
+                # A rotation response must include the rebuilt positions, rather
+                # than leaving the browser on a stale graph after a background build.
                 payload, age, state = STORE.get(("rrg",) + key, make,
-                                                fresh=FRESH["rrg"], force=force)
+                                                fresh=FRESH["rrg"],
+                                                max_stale=FRESH["rrg"], force=force)
                 body = json.dumps(dict(payload, cache={"state": state,
                                                        "age": round(age, 1)})).encode()
             except Exception as e:

@@ -538,8 +538,8 @@ function renderSummary(list){
   const best = list[0], worst = list[list.length - 1];
   el.innerHTML =
     statTile('Advancing', `${up}<small> / ${list.length}</small>`, `${down} declining`, up >= down ? 'up' : '') +
-    statTile('Leading',  best.sector,  `${fmtPct(best.pct)} · ${best.indexSymbol}`,  dirOf(best.pct)) +
-    statTile('Lagging',  worst.sector, `${fmtPct(worst.pct)} · ${worst.indexSymbol}`, dirOf(worst.pct)) +
+    statTile(`Highest ${tfLabel(state.timeframe).toLowerCase()} return`, best.sector, `${fmtPct(best.pct)} · ${best.indexSymbol}`, dirOf(best.pct)) +
+    statTile(`Lowest ${tfLabel(state.timeframe).toLowerCase()} return`, worst.sector, `${fmtPct(worst.pct)} · ${worst.indexSymbol}`, dirOf(worst.pct)) +
     statTile('Timeframe', tfLabel(state.timeframe), 'vs previous close');
 }
 

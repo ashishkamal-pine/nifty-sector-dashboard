@@ -2,12 +2,23 @@
 
 `RRG.html` + `rrg.py`, served at <http://localhost:8765/rrg>.
 
+The visible rotation page refreshes its current scope, timeframe and benchmark every
+two minutes, and when you return to the tab. Hidden tabs stop polling. **Updated** shows
+when the displayed RRG was calculated; **As of** shows the latest source-price date.
+An expired RRG cache entry is rebuilt before responding so the graph and Positions table
+receive the new values together. A failed refresh keeps the last displayed graph and
+reports the error. Manual **Refresh** still forces a rebuild.
+
 A Relative Rotation Graph plots each sector against a benchmark on two axes, so you can
 see **whether a sector is beating the benchmark** and **whether that lead is growing or
 shrinking**, at the same time.
 
 Everything on it is *relative*. A sector can sit in Leading while falling, if it is
 falling more slowly than the market.
+
+The performance board's **Highest/Lowest daily, weekly or monthly return** tiles rank
+the price change for that period. They do not classify RRG quadrants. A sector can have
+the highest daily return while its smoothed relative trend remains in **Lagging**.
 
 ## The axes
 
